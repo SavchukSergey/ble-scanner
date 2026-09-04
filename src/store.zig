@@ -24,10 +24,11 @@ pub const Entry = struct {
     last_ms: i64,
     count: u32 = 0,
 
-    rssi_last: i8 = 0,
+    rssi_last: i8 = 127,
     rssi_min: i8 = 127,
     rssi_max: i8 = -128,
     rssi_sum: i64 = 0,
+    rssi_n: u32 = 0,
 
     hist: [hist_len]i8 = @splat(0),
     hist_pos: u8 = 0,
@@ -74,8 +75,8 @@ pub const Entry = struct {
     }
 
     pub fn rssiAvg(self: *const Entry) i8 {
-        if (self.count == 0) return 0;
-        const avg = @divTrunc(self.rssi_sum, @as(i64, self.count));
+        if (self.rssi_n == 0) return 127; // no valid sample seen
+        const avg = @divTrunc(self.rssi_sum, @as(i64, self.rssi_n));
         return @intCast(std.math.clamp(avg, -128, 127));
     }
 
@@ -169,13 +170,20 @@ pub const Store = struct {
         e.last_ms = ev.ts_ms;
         e.adv_type = ev.adv_type;
         e.count += 1;
-        e.rssi_last = ev.rssi;
-        if (ev.rssi < e.rssi_min) e.rssi_min = ev.rssi;
-        if (ev.rssi > e.rssi_max) e.rssi_max = ev.rssi;
-        e.rssi_sum += ev.rssi;
-        e.hist[e.hist_pos % hist_len] = ev.rssi;
-        e.hist_pos = (e.hist_pos + 1) % hist_len;
-        if (e.hist_fill < hist_len) e.hist_fill += 1;
+        // RSSI of -127/-128 is the stack's "not measured" marker — don't
+        // let it poison the statistics, history or radar placement.
+        if (ev.rssi > -120) {
+            e.rssi_last = ev.rssi;
+            if (ev.rssi < e.rssi_min) e.rssi_min = ev.rssi;
+            if (ev.rssi > e.rssi_max) e.rssi_max = ev.rssi;
+            e.rssi_sum += ev.rssi;
+            e.rssi_n += 1;
+            e.hist[e.hist_pos % hist_len] = ev.rssi;
+            e.hist_pos = (e.hist_pos + 1) % hist_len;
+            if (e.hist_fill < hist_len) e.hist_fill += 1;
+        } else if (e.count == 1) {
+            e.rssi_last = 127; // no valid sample yet
+        }
 
         // Name: prefer explicit, then the 0x09/0x08 section. Distinct new
         // names rotate the previous one into the history list.
@@ -295,6 +303,7 @@ fn copySections(self: *Store, e: *Entry, sections: []const model.AdSection) void
 // tests -----------------------------------------------------------------------
 
 const testing = std.testing;
+const widgets_hasRssi = @import("tui/widgets.zig").hasRssi;
 
 test "aggregate events per device" {
     var store = try Store.init(testing.allocator);
@@ -348,11 +357,30 @@ test "aggregate events per device" {
     try testing.expectEqualStrings("Gamma", e2.altName(0).?);
     try testing.expectEqualStrings("Beta", e2.altName(1).?);
 
+    // RSSI of -127 ("not measured") must not pollute statistics: a fresh
+    // device whose only sample is invalid keeps the sentinel, not garbage.
+    const probe = testing.allocator.create(model.AdvEvent) catch unreachable;
+    probe.* = .{
+        .addr = .{ 2, 2, 2, 2, 2, 2 },
+        .addr_type = .random,
+        .adv_type = .connectable_undirected,
+        .rssi = -127,
+        .ts_ms = 500,
+    };
+    store.update(probe);
+    const e3 = store.get(model.addrKey(.{ 2, 2, 2, 2, 2, 2 }, .random)).?;
+    try testing.expectEqual(@as(i8, 127), e3.rssi_last);
+    try testing.expectEqual(@as(i8, 127), e3.rssiAvg());
+    try testing.expectEqual(@as(u32, 0), e3.rssi_n);
+    try testing.expectEqual(@as(u32, 1), e3.count);
+    try testing.expectEqual(@as(u8, 0), e3.hist_fill);
+    try testing.expect(widgets_hasRssi(e3) == false);
+
     // Different address type → separate device.
     const other = mk.ev(-40, 4000, null);
     other.addr_type = .public;
     store.update(other);
-    try testing.expectEqual(@as(usize, 2), store.count());
+    try testing.expectEqual(@as(usize, 3), store.count());
 }
 
 test "sections merge across ADV and SCAN_RSP" {

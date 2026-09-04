@@ -211,9 +211,12 @@ pub fn decodeXiaomi(data: []const u8, w: *std.Io.Writer) bool {
     const frame_ctrl = std.mem.readInt(u16, data[0..2], .little);
     const product = std.mem.readInt(u16, data[2..4], .little);
     const counter = data[4];
-    const encrypted = frame_ctrl & 0x0008 != 0;
-    const has_mac = frame_ctrl & 0x0002 != 0;
-    const has_cap = frame_ctrl & 0x0010 != 0;
+    // Frame-control bits per the Mi Beacon spec (verified against live
+    // LYWSD03MMC/CGG1 frames): bit0 encrypted, bit4 MAC included,
+    // bit5 capability included.
+    const encrypted = frame_ctrl & 0x0001 != 0;
+    const has_mac = frame_ctrl & 0x0010 != 0;
+    const has_cap = frame_ctrl & 0x0020 != 0;
 
     const pn = xiaomiProduct(product);
     if (pn) |n| {
@@ -441,12 +444,14 @@ test "decode microsoft cdp swift pair" {
 test "decode xiaomi frame" {
     var aw: std.Io.Writer.Allocating = .init(testing.allocator);
     defer aw.deinit();
-    // frame_ctrl 0x0000 (plain), product 0x055B, counter 3
-    const data = [_]u8{ 0x00, 0x00, 0x5B, 0x05, 0x03, 0x0D, 0x10, 0x04, 0x01, 0x00, 0x20 };
+    // Real LYWSD03MMC frame captured live: ctrl 0x5830 (MAC + capability
+    // included), product 0x055B, counter, reversed source MAC, cap, payload.
+    const data = [_]u8{ 0x30, 0x58, 0x5B, 0x05, 0x01, 0xFD, 0x24, 0x8C, 0x38, 0xC1, 0xA4, 0x28, 0x01, 0x00 };
     try testing.expect(decodeXiaomi(&data, &aw.writer));
     try aw.writer.flush();
     const out = aw.written();
     try testing.expect(std.mem.indexOf(u8, out, "LYWSD03MMC") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "A4:C1:38:8C:24:FD") != null); // un-reversed MAC
     try testing.expect(std.mem.indexOf(u8, out, "counter") != null);
 }
 

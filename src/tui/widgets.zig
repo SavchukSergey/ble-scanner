@@ -43,6 +43,10 @@ pub fn rssiColor(r: i8) u8 {
     return c_red;
 }
 
+pub fn hasRssi(e: *const Entry) bool {
+    return e.rssi_last != 127;
+}
+
 /// "5s" / "12m" / "3h" for a duration in ms.
 pub fn fmtAge(ms: i64, buf: []u8) []const u8 {
     const s = @divTrunc(ms, 1000);
@@ -269,8 +273,12 @@ pub fn drawListBody(s: *Screen, entries: []*Entry, sel_idx: usize, top: usize, n
         }
         if (c.rssi > 0) {
             var rb: [16]u8 = undefined;
-            const bar = std.fmt.bufPrint(&rb, "{s} {d}", .{ barGlyph(rssiBucket(e.rssi_last)), e.rssi_last }) catch "-";
-            _ = s.text(c.x_rssi, y, bar, .{ .fg = rssiColor(e.rssi_last), .bg = base.bg });
+            if (e.rssi_last == 127) {
+                _ = s.text(c.x_rssi, y, "  --", dim);
+            } else {
+                const bar = std.fmt.bufPrint(&rb, "{s} {d}", .{ barGlyph(rssiBucket(e.rssi_last)), e.rssi_last }) catch "-";
+                _ = s.text(c.x_rssi, y, bar, .{ .fg = rssiColor(e.rssi_last), .bg = base.bg });
+            }
         }
     }
 
@@ -378,6 +386,7 @@ const pi_f: f32 = 3.14159265;
 /// advertised TX power when present and -59 dBm @1m otherwise.
 /// Path-loss exponent 2, clamped to the drawable range.
 pub fn estDistanceMeters(e: *const Entry) f32 {
+    if (!hasRssi(e)) return 50.0; // no signal data: park at the outer ring
     var secs_buf: [40]model.AdSection = undefined;
     const n = e.sections(&secs_buf);
     const tx: i8 = ad.txPower(secs_buf[0..n]) orelse -59;
@@ -482,7 +491,7 @@ pub fn drawRadar(s: *Screen, entries: []*Entry, sel_idx: usize, now_ms: i64) voi
         const st: Style = if (selected)
             .{ .fg = 255, .bg = c_sel_bg, .bold = true }
         else
-            .{ .fg = rssiColor(e.rssiAvg()), .bold = true };
+            .{ .fg = if (hasRssi(e)) rssiColor(e.rssiAvg()) else 240, .bold = true };
         const g = deviceGlyph(e);
         // Nudge once on collision with another glyph.
         if (isGlyph(s, x, y)) x += 1;

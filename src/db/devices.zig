@@ -20,6 +20,7 @@ pub const Kind = enum {
     exposure,
     cdp,
     xiaomi,
+    tuya,
 
     // generic categories (from appearance / services)
     watch,
@@ -54,6 +55,7 @@ pub const Kind = enum {
             .exposure => "Exposure Notification",
             .cdp => "Microsoft CDP",
             .xiaomi => "Xiaomi device",
+            .tuya => "Tuya device",
             .watch => "watch",
             .band => "fitness band",
             .headphones => "headphones",
@@ -125,6 +127,9 @@ pub const rules = [_]Rule{
     .{ .svc = 0xFE95, .kind = .xiaomi },
     .{ .company = 0x038F, .kind = .xiaomi },
 
+    // Tuya smart-home devices (mfr id 0x07D0).
+    .{ .company = 0x07D0, .kind = .tuya },
+
     // Apple 0xFCB2 service-data beacons (undocumented Apple service).
     .{ .svc = 0xFCB2, .kind = .unknown, .detail = "Apple service" },
 
@@ -136,6 +141,7 @@ pub const rules = [_]Rule{
     .{ .name_prefix = "Galaxy Watch", .kind = .watch, .detail = "Samsung Galaxy Watch" },
     .{ .name_prefix = "Galaxy Buds", .kind = .headphones, .detail = "Galaxy Buds" },
     .{ .name_prefix = "BYD", .kind = .car, .detail = "BYD (digital key)" },
+    .{ .name_prefix = "YUNMAI", .kind = .scale, .detail = "YUNMAI smart scale" },
 
     // Known wearable vendors (no appearance/service hints needed).
     .{ .company = 0x0087, .kind = .watch, .detail = "Garmin" },
