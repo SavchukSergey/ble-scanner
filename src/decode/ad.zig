@@ -185,7 +185,7 @@ pub fn flagDescriptions(f: u8, buf: *[96]u8) []const u8 {
     } else {
         w += append(buf, w, "dual-mode ");
     }
-    return std.mem.trimRight(u8, buf[0..w], " ");
+    return std.mem.trim(u8, buf[0..w], " ");
 }
 
 fn append(buf: []u8, at: usize, s: []const u8) usize {

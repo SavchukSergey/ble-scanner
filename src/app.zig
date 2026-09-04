@@ -564,14 +564,90 @@ pub const App = struct {
         self.putVendorDecodes(e, secs);
         self.putDecodedPayloads(secs);
 
-        // Raw sections
+        // Raw sections, with interpreted values where the format is known.
         self.put(.section, "RAW ADVERTISING DATA", .{});
         var hexbuf: [512]u8 = undefined;
+        var valbuf: [160]u8 = undefined;
         for (secs) |sec| {
             const nm = ad.sectionName(sec.typ);
-            const hex = model.hexEncode(sec.data, &hexbuf);
-            self.put(.hex, "  0x{X:0>2} {s: <28} {s}", .{ sec.typ, nm orelse "-", hex });
+            const val: []const u8 = rawSectionValue(sec, &valbuf) orelse model.hexEncode(sec.data, &hexbuf);
+            self.put(.hex, "  0x{X:0>2} {s: <28} {s}", .{ sec.typ, nm orelse "-", val });
         }
+    }
+
+    /// Human-readable value for a raw AD section where the format is known
+    /// (UUID lists get decoded from little-endian, names become text, tx
+    /// power becomes dBm, appearance gets its name); null -> caller falls
+    /// back to hex.
+    fn rawSectionValue(sec: model.AdSection, buf: []u8) ?[]const u8 {
+        switch (sec.typ) {
+            0x01 => { // flags
+                if (sec.data.len < 1) return null;
+                var fb: [96]u8 = undefined;
+                const s = ad.flagDescriptions(sec.data[0], &fb);
+                const n = copyTo(buf, s);
+                return buf[0..n];
+            },
+            0x02, 0x03, 0x14, 0x1F => { // 16-bit UUID lists
+                var w: usize = 0;
+                w += copyTo(buf[w..], "[");
+                var i: usize = 0;
+                var n: usize = 0;
+                while (i + 2 <= sec.data.len and n < 8) : ({
+                    i += 2;
+                    n += 1;
+                }) {
+                    if (n > 0) w += copyTo(buf[w..], ", ");
+                    const s = std.fmt.bufPrint(buf[w..][0..8], "0x{X:0>4}", .{std.mem.readInt(u16, sec.data[i..][0..2], .little)}) catch break;
+                    w += s.len;
+                }
+                if (i < sec.data.len) w += copyTo(buf[w..], " …");
+                w += copyTo(buf[w..], "]");
+                return buf[0..w];
+            },
+            0x04, 0x05, 0x20 => { // 32-bit UUID lists
+                if (sec.data.len < 4) return null;
+                return std.fmt.bufPrint(buf, "[0x{X:0>8}]", .{std.mem.readInt(u32, sec.data[0..4], .little)}) catch null;
+            },
+            0x06, 0x07, 0x21 => { // 128-bit UUIDs
+                if (sec.data.len < 16) return null;
+                var u: [16]u8 = undefined;
+                for (0..16) |k| u[k] = sec.data[15 - k];
+                var ub: [36]u8 = undefined;
+                const s = uuid128Str(&u, &ub);
+                if (sec.data.len > 16) {
+                    return std.fmt.bufPrint(buf, "{s} (+{d} more)", .{ s, (sec.data.len / 16) - 1 }) catch null;
+                }
+                const n = copyTo(buf, s);
+                return buf[0..n];
+            },
+            0x08, 0x09 => { // local names
+                if (sec.data.len == 0) return null;
+                var w: usize = 0;
+                for (sec.data) |c| {
+                    if (w >= buf.len - 1) break;
+                    buf[w] = if (c >= 0x20 and c < 0x7F) c else '?';
+                    w += 1;
+                }
+                return buf[0..w];
+            },
+            0x0A => { // tx power
+                if (sec.data.len < 1) return null;
+                return std.fmt.bufPrint(buf, "{d} dBm", .{@as(i8, @bitCast(sec.data[0]))}) catch null;
+            },
+            0x19 => { // appearance
+                if (sec.data.len < 2) return null;
+                const ap = std.mem.readInt(u16, sec.data[0..2], .little);
+                return std.fmt.bufPrint(buf, "0x{X:0>4} ({s})", .{ ap, appearance_db.nameFor(ap) }) catch null;
+            },
+            else => return null,
+        }
+    }
+
+    fn copyTo(buf: []u8, s: []const u8) usize {
+        const n = @min(s.len, buf.len);
+        @memcpy(buf[0..n], s[0..n]);
+        return n;
     }
 
     fn putVendorDecodes(self: *App, e: *store_mod.Entry, secs: []const model.AdSection) void {
