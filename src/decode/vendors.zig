@@ -62,6 +62,13 @@ fn continuityTypeName(t: u8) ?[]const u8 {
 }
 
 pub fn decodeApple(payload: []const u8, w: *std.Io.Writer) bool {
+    // iBeacon frames (02 15/16 + UUID…) are handled by the dedicated
+    // iBeacon decoder — don't misread their prefix as a Continuity TLV.
+    if (payload.len >= 2 and payload[0] == 0x02 and
+        (payload[1] == 0x15 or payload[1] == 0x16) and payload.len >= 23)
+    {
+        return false;
+    }
     // The manufacturer payload contains one or more [type][len][body]
     // Continuity structures stacked back to back — decode each.
     if (payload.len < 2) return false;
@@ -450,6 +457,16 @@ test "decode exposure notification" {
     try testing.expect(decodeExposure(&data, &aw.writer));
     try aw.writer.flush();
     try testing.expect(std.mem.indexOf(u8, aw.written(), "rolling proximity id") != null);
+}
+
+test "decode apple skips ibeacon frames" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    // Real iBeacon from a live capture: must NOT decode as Continuity.
+    const payload = [_]u8{0x02} ++ [_]u8{0x15} ++ ([_]u8{0x74} ** 16) ++ [_]u8{ 0x01, 0x00, 0xE4, 0x16, 0xC5 };
+    try testing.expect(!decodeApple(&payload, &aw.writer));
+    try aw.writer.flush();
+    try testing.expectEqual(@as(usize, 0), aw.written().len);
 }
 
 test "decode find my device network beacon" {
