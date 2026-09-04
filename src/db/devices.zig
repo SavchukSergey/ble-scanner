@@ -21,6 +21,7 @@ pub const Kind = enum {
     cdp,
     xiaomi,
     tuya,
+    ap,
 
     // generic categories (from appearance / services)
     watch,
@@ -56,6 +57,7 @@ pub const Kind = enum {
             .cdp => "Microsoft CDP",
             .xiaomi => "Xiaomi device",
             .tuya => "Tuya device",
+            .ap => "Wi-Fi access point",
             .watch => "watch",
             .band => "fitness band",
             .headphones => "headphones",
@@ -142,6 +144,7 @@ pub const rules = [_]Rule{
     .{ .name_prefix = "Galaxy Buds", .kind = .headphones, .detail = "Galaxy Buds" },
     .{ .name_prefix = "BYD", .kind = .car, .detail = "BYD (digital key)" },
     .{ .name_prefix = "YUNMAI", .kind = .scale, .detail = "YUNMAI smart scale" },
+    .{ .name_prefix = "AP_", .kind = .ap, .detail = "BLE provisioning beacon" },
 
     // Known wearable vendors (no appearance/service hints needed).
     .{ .company = 0x0087, .kind = .watch, .detail = "Garmin" },
