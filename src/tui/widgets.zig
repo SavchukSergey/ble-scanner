@@ -58,10 +58,120 @@ pub fn fmtAge(ms: i64, buf: []u8) []const u8 {
     return std.fmt.bufPrint(buf, "{d}h", .{@divTrunc(m, 60)}) catch "now";
 }
 
-/// HH:MM:SS (UTC) from epoch ms.
+/// HH:MM:SS local time from epoch ms.
 pub fn fmtClock(ms: i64, buf: []u8) []const u8 {
-    const s: u64 = @intCast(@mod(@divFloor(ms, 1000), 86400));
-    return std.fmt.bufPrint(buf, "{d:0>2}:{d:0>2}:{d:0>2}", .{ s / 3600, (s / 60) % 60, s % 60 }) catch "--:--:--";
+    const epoch_s: i64 = @divFloor(ms, 1000);
+    const local_s = epoch_s + localUtcOffsetSeconds(epoch_s);
+    const day_s: u64 = @intCast(@mod(local_s, 86400));
+    return std.fmt.bufPrint(buf, "{d:0>2}:{d:0>2}:{d:0>2}", .{ day_s / 3600, (day_s / 60) % 60, day_s % 60 }) catch "--:--:--";
+}
+
+var cached_offset: ?i64 = null;
+var cached_until: i64 = 0;
+
+fn localUtcOffsetSeconds(now_s: i64) i64 {
+    // Cache for an hour — timezone changes are rare and the query is
+    // expensive enough to avoid per-frame.
+    if (cached_offset) |off| {
+        if (now_s < cached_until) return off;
+    }
+    const off = queryUtcOffset(now_s);
+    cached_offset = off;
+    cached_until = now_s + 3600;
+    return off;
+}
+
+fn queryUtcOffset(now_s: i64) i64 {
+    const builtin = @import("builtin");
+    switch (builtin.os.tag) {
+        .windows => {
+            const GetTimeZoneInformation = struct {
+                extern "kernel32" fn GetTimeZoneInformation(
+                    lpTimeZoneInformation: *anyopaque,
+                ) callconv(.c) u32;
+            }.GetTimeZoneInformation;
+            // TIME_ZONE_INFORMATION: LONG Bias; WCHAR StandardName[32];
+            // SYSTEMTIME StandardDate; LONG StandardBias;
+            // WCHAR DaylightName[32]; SYSTEMTIME DaylightDate; LONG DaylightBias;
+            const TZI = extern struct {
+                Bias: i32,
+                StandardName: [32]u16,
+                StandardDate: extern struct { y: u16, mo: u16, dow: u16, d: u16, h: u16, mi: u16, s: u16, ms: u16 },
+                StandardBias: i32,
+                DaylightName: [32]u16,
+                DaylightDate: extern struct { y: u16, mo: u16, dow: u16, d: u16, h: u16, mi: u16, s: u16, ms: u16 },
+                DaylightBias: i32,
+            };
+            var tzi: TZI = undefined;
+            const rc = GetTimeZoneInformation(@ptrCast(&tzi));
+            // Bias is minutes WEST of UTC (UTC = local + bias); the total
+            // offset is Bias + (active ? DaylightBias : StandardBias).
+            const total_bias: i64 = @as(i64, tzi.Bias) +
+                (if (rc == 2) @as(i64, tzi.DaylightBias) else 0);
+            return -total_bias * 60;
+        },
+        .linux => {
+            return linuxUtcOffset(now_s);
+        },
+        else => return 0,
+    }
+}
+
+/// Read the current UTC offset from /etc/localtime (TZif v2).
+/// Falls back to UTC when the file is missing or unparseable.
+fn linuxUtcOffset(now_s: i64) i64 {
+    const io = std.Io.Threaded.init(std.heap.page_allocator) catch return 0;
+    const file = std.Io.Dir.cwd().openFile(io, "/etc/localtime", .{}) catch return 0;
+    defer file.close(io);
+    var fbuf: [4096]u8 = undefined;
+    const n = file.readStreaming(io, &.{fbuf[0..]}) catch return 0;
+    const data = fbuf[0..n];
+
+    // TZif v2 header: magic(4) ver(1) pad(15) then counts:
+    // isutcnt(4) isstdcnt(4) leapcnt(4) timecnt(4) typecnt(4) charcnt(4)
+    if (data.len < 44 or !std.mem.eql(u8, data[0..4], "TZif")) return 0;
+    const timecnt = std.mem.readInt(u32, data[20..24], .big);
+    const typecnt = std.mem.readInt(u32, data[24..28], .big);
+    if (typecnt == 0 or timecnt == 0) return 0;
+
+    // v2 block starts after the v1 data block; find it by the second magic.
+    var v2_off: usize = 44;
+    // v1 data size: timecnt*4 + timecnt*1 + typecnt*6 + charcnt + leapcnt*8 + isstdcnt + isutcnt
+    const isutcnt = std.mem.readInt(u32, data[12..16], .big);
+    const isstdcnt = std.mem.readInt(u32, data[16..20], .big);
+    const leapcnt = std.mem.readInt(u32, data[28..32], .big);
+    const charcnt = std.mem.readInt(u32, data[32..36], .big);
+    const v1_size = 44 + @as(usize, timecnt) * 4 + timecnt + @as(usize, typecnt) * 6 + charcnt + @as(usize, leapcnt) * 8 + isstdcnt + isutcnt;
+    if (v1_size >= data.len) return 0;
+    v2_off = v1_size;
+    if (v2_off + 44 > data.len or !std.mem.eql(u8, data[v2_off .. v2_off + 4], "TZif")) return 0;
+
+    // v2 counts
+    const v2_timecnt = std.mem.readInt(u32, data[v2_off + 20 ..][0..4], .big);
+    const v2_typecnt = std.mem.readInt(u32, data[v2_off + 24 ..][0..4], .big);
+    if (v2_timecnt == 0 or v2_typecnt == 0) return 0;
+
+    const trans_off = v2_off + 44;
+    const idx_off = trans_off + @as(usize, v2_timecnt) * 8; // 8-byte times in v2
+    const type_off = idx_off + v2_timecnt;
+
+    if (type_off + @as(usize, v2_typecnt) * 6 > data.len) return 0;
+
+    // Find the last transition <= now (binary search would be nice but
+    // linear is fine for typical ~200 entries).
+    var active_type: usize = 0;
+    var i: usize = 0;
+    while (i < v2_timecnt) : (i += 1) {
+        const t: i64 = std.mem.readInt(i64, data[trans_off + i * 8 ..][0..8], .big);
+        if (t <= now_s) {
+            active_type = data[idx_off + i];
+        } else break;
+    }
+    if (active_type >= v2_typecnt) return 0;
+
+    // ttinfo: gmtoff (i32 BE), isdst (u8), abbrind (u8)
+    const gmtoff = std.mem.readInt(i32, data[type_off + active_type * 6 ..][0..4], .big);
+    return gmtoff;
 }
 
 pub fn drawTopBar(s: *Screen, backend: []const u8, n_dev: usize, now_ms: i64, paused: bool, sort_label: []const u8, filter_text: ?[]const u8) void {
