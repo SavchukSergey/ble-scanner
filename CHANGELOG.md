@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Radar view (`m`): devices plotted on log-scale distance rings estimated
+  from signal strength (advertised TX power when present), with an animated
+  sweep and a nearest-devices readout on wide screens. No directional data —
+  a single antenna hears no bearing, and the view says so.
+- Radar navigation: `↑↓/jk` walk devices nearest-first; the selection is
+  bracketed on the chart with a name/distance readout and mirrored in the
+  NEAREST panel; `⏎` opens the detail view and `Esc` returns to the chart.
+
 ## [0.1.0] - 2026-09-04
 
 Initial public release.

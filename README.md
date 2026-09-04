@@ -35,6 +35,8 @@ Eddystone URL, Xiaomi product, Swift Pair device name) and the raw hex.
 - Live scanning on Windows (WinRT watcher) and Linux (raw HCI socket),
   one platform-neutral event model
 - Device list with sorting, scrollbar, colored RSSI bars, age
+- Radar view (`m`): approximate distance rings around you, animated sweep,
+  nearest-devices readout
 - Detail view with vendor-decoded payloads, SIG names, GATT appearance
 - Field-aware filter: `name:airpods company:google rssi:-70`
 - Record (`--log`) and replay (`--replay`) captures as plain JSONL
@@ -80,9 +82,17 @@ material for new device-type decoders.
 
 ### Keys
 
-`↑↓/jk` select · `⏎` details · `/` filter · `r` raw hex view · `s` sort ·
-`c` clear · `p` pause · `?` help · `q` quit. Detail view: `↑↓/jk` scroll,
+`↑↓/jk` select · `⏎` details · `/` filter · `m` radar · `r` raw hex view · `s`
+sort · `c` clear · `p` pause · `?` help · `q` quit. Detail view: `↑↓/jk` scroll,
 `PgUp/PgDn`, `g/G`, `Esc` back. `Esc` in the list clears the active filter.
+
+The radar view (`m`) plots devices on log-scale distance rings estimated from
+signal strength (advertised TX power when present). It deliberately shows no
+bearing — a single antenna cannot hear direction; the glyph spread is just a
+stable layout. `↑↓/jk` walk through devices nearest-first (the selection is
+bracketed on the chart, listed in the NEAREST panel, with a name/distance
+readout), `⏎` opens details and `Esc` returns to the chart. Good for "walk
+toward the strong signal" hunting.
 
 ### Filtering
 

@@ -88,7 +88,8 @@ pub fn drawTopBar(s: *Screen, backend: []const u8, n_dev: usize, now_ms: i64, pa
 }
 
 pub const Hints = struct {
-    pub const list = "↑↓ select · ⏎ details · / filter · r raw · s sort · c clear · p pause · ? help · q quit";
+    pub const list = "↑↓ select · ⏎ details · / filter · m radar · r raw · s sort · c clear · p pause · ? help · q quit";
+    pub const radar = "↑↓ select · ⏎ details · m list · / filter · p pause · ? help · q quit";
     pub const detail = "↑↓ scroll · PgUp/PgDn page · Esc back · ? help · q quit";
 };
 
@@ -369,6 +370,216 @@ pub fn drawErrorBox(s: *Screen, title: []const u8, msg: []const u8) void {
     }
 }
 
+// --- radar view ---------------------------------------------------------------
+
+const pi_f: f32 = 3.14159265;
+
+/// Approximate distance in meters from (smoothed) RSSI, using the
+/// advertised TX power when present and -59 dBm @1m otherwise.
+/// Path-loss exponent 2, clamped to the drawable range.
+pub fn estDistanceMeters(e: *const Entry) f32 {
+    var secs_buf: [40]model.AdSection = undefined;
+    const n = e.sections(&secs_buf);
+    const tx: i8 = ad.txPower(secs_buf[0..n]) orelse -59;
+    const dx: f32 = @as(f32, @floatFromInt(tx)) - @as(f32, @floatFromInt(e.rssiAvg()));
+    return std.math.clamp(std.math.pow(f32, 10, dx / 20.0), 0.3, 50.0);
+}
+
+/// Stable pseudo-angle from the address — the layout must not flicker
+/// between frames, and there is no real directional information.
+fn hashAngle(key: u64) f32 {
+    var h: u64 = 2166136261;
+    for (@as([8]u8, @bitCast(key))) |b| h = (h ^ b) *% 16777619;
+    return @as(f32, @floatFromInt(h % 3600)) / 3600.0 * 2.0 * pi_f;
+}
+
+fn deviceGlyph(e: *const Entry) u21 {
+    for (e.name()) |c| {
+        if (c >= '!' and c <= '~') return std.ascii.toUpper(c);
+    }
+    const hexd = "0123456789ABCDEF";
+    return @intCast(hexd[e.addr[5] >> 4]);
+}
+
+/// Polar "radar": log-scale distance rings around the receiver.
+/// Distances are signal-strength estimates; angles carry NO meaning
+/// (a single antenna hears no bearing) — the glyph spread is a stable
+/// hash purely to avoid overlap.
+pub fn drawRadar(s: *Screen, entries: []*Entry, sel_idx: usize, now_ms: i64) void {
+    if (s.w < 40 or s.h < 14) {
+        drawEmpty(s, "terminal too small for the radar view");
+        return;
+    }
+
+    const cx: f32 = @as(f32, @floatFromInt(s.w)) / 2.0 - (if (s.w >= 104) @as(f32, 13.0) else 0.0);
+    const cy: f32 = @as(f32, @floatFromInt(s.h - 2)) / 2.0 + 0.5;
+    // Cells are ~2:1; halve vertical excursions to keep circles round.
+    const rmax: f32 = @min(cx - 3.0, (cy - 1.5) * 2.0);
+    if (rmax < 6.0) {
+        drawEmpty(s, "terminal too small for the radar view");
+        return;
+    }
+
+    const ring_dim: Style = .{ .fg = 240 };
+    const ringR = struct {
+        fn f(d: f32, r_max: f32) f32 {
+            const l = @log(d / 0.3) / @log(50.0 / 0.3);
+            return r_max * l;
+        }
+    }.f;
+
+    // Rings at 1/2/5/10/20 m with labels on the +x axis.
+    const rings = [_]u8{ 1, 2, 5, 10, 20 };
+    for (rings) |dm| {
+        const d: f32 = @floatFromInt(dm);
+        const rr = ringR(d, rmax);
+        if (rr < 3.0) continue;
+        var t: f32 = 0;
+        while (t < 2.0 * pi_f) : (t += 0.06) {
+            const x = cx + rr * @cos(t);
+            const y = cy + rr * @sin(t) / 2.0;
+            s.put(@intFromFloat(x), @intFromFloat(y), if (screen_mod.ascii) '.' else '·', ring_dim);
+        }
+        var lb: [8]u8 = undefined;
+        const txt = if (dm < 10)
+            std.fmt.bufPrint(&lb, "{d}m", .{dm}) catch ""
+        else
+            std.fmt.bufPrint(&lb, "{d}m", .{dm}) catch "";
+        _ = s.text(@intFromFloat(cx + rr - 2), @intFromFloat(cy - rr / 4 - 0.6), txt, .{ .fg = 244 });
+    }
+
+    // Crosshair.
+    var xi: i32 = @intFromFloat(cx - rmax);
+    while (xi <= @as(i32, @intFromFloat(cx + rmax))) : (xi += 1) {
+        s.put(@intCast(xi), @intFromFloat(cy), if (screen_mod.ascii) '.' else '·', ring_dim);
+    }
+    var yi: i32 = @intFromFloat(cy - rmax / 2);
+    while (yi <= @as(i32, @intFromFloat(cy + rmax / 2))) : (yi += 1) {
+        s.put(@intFromFloat(cx), @intCast(yi), if (screen_mod.ascii) '.' else '·', ring_dim);
+    }
+
+    // Animated sweep (purely decorative, shows the view is live).
+    {
+        const sweep_deg: f32 = @floatFromInt(@mod(@divTrunc(now_ms, 50), 360));
+        const a = sweep_deg * pi_f / 180.0;
+        var t: f32 = 2.0;
+        while (t < rmax) : (t += 1.0) {
+            s.put(@intFromFloat(cx + t * @cos(a)), @intFromFloat(cy + t * @sin(a) / 2.0), if (screen_mod.ascii) '|' else '│', .{ .fg = 74 });
+        }
+    }
+
+    // You.
+    s.put(@intFromFloat(cx), @intFromFloat(cy), if (screen_mod.ascii) '@' else '⌖', .{ .fg = 255, .bold = true });
+
+    // Devices (input order is nearest-first; the selected entry gets
+    // bracket markers).
+    for (entries, 0..) |e, i| {
+        const r = ringR(estDistanceMeters(e), rmax);
+        const ang = hashAngle(e.key);
+        var x: u32 = @intFromFloat(@max(0, cx + r * @cos(ang)));
+        const y: u32 = @intFromFloat(@max(0, cy + r * @sin(ang) / 2.0));
+        const selected = (i == sel_idx);
+        const st: Style = if (selected)
+            .{ .fg = 255, .bg = c_sel_bg, .bold = true }
+        else
+            .{ .fg = rssiColor(e.rssiAvg()), .bold = true };
+        const g = deviceGlyph(e);
+        // Nudge once on collision with another glyph.
+        if (isGlyph(s, x, y)) x += 1;
+        if (isGlyph(s, x, y)) x -|= 2;
+        if (selected) {
+            s.put(x -| 1, y, '[', .{ .fg = c_accent, .bold = true });
+            s.put(x + 1, y, ']', .{ .fg = c_accent, .bold = true });
+        }
+        s.put(x, y, g, st);
+    }
+
+    // Selected-device readout under the top bar.
+    if (entries.len > 0 and sel_idx < entries.len) {
+        const e = entries[sel_idx];
+        var nb: [17]u8 = undefined;
+        var nm: []const u8 = e.name();
+        if (nm.len == 0) nm = model.formatMac(e.addr, &nb);
+        var db: [12]u8 = undefined;
+        const dist = estDistanceMeters(e);
+        const dstr = if (dist < 10)
+            std.fmt.bufPrint(&db, "~{d:.1} m", .{dist}) catch ""
+        else
+            std.fmt.bufPrint(&db, "~{d} m", .{@as(u32, @intFromFloat(dist))}) catch "";
+        var rb: [64]u8 = undefined;
+        const line = std.fmt.bufPrint(&rb, "⏎ {s} · {s} · {d} dBm", .{ nm, dstr, e.rssiAvg() }) catch "";
+        s.textBounded(2, 1, line, @min(@as(u32, @intCast(line.len)), s.w -| 4), .{ .fg = c_accent, .bold = true });
+    }
+
+    // Nearest-devices readout on wide screens; the panel scrolls to keep
+    // the selection visible, like the main list.
+    if (s.w >= 104 and entries.len > 0) {
+        const px: u32 = s.w - 26;
+        const sorted = entries;
+        std.mem.sort(*Entry, sorted, {}, struct {
+            fn lt(_: void, a: *Entry, b: *Entry) bool {
+                return a.rssiAvg() > b.rssiAvg();
+            }
+        }.lt);
+
+        const rows_avail: usize = if (s.h > 11) s.h - 7 else 1;
+        var top: usize = 0;
+        if (sel_idx >= rows_avail / 2 and sorted.len > rows_avail) {
+            top = @min(sel_idx - rows_avail / 2, sorted.len - rows_avail);
+        }
+
+        var hb: [24]u8 = undefined;
+        const hdr = std.fmt.bufPrint(&hb, "NEAREST {d}/{d}", .{ sel_idx + 1, sorted.len }) catch "NEAREST";
+        _ = s.text(px, 2, hdr, .{ .fg = c_dim, .bold = true });
+        if (top > 0) {
+            s.put(px + 21, 2, if (screen_mod.ascii) '^' else '↑', .{ .fg = c_accent });
+        }
+
+        var row: u32 = 4;
+        var i: usize = top;
+        while (i < sorted.len and row < s.h - 3) : ({
+            i += 1;
+            row += 1;
+        }) {
+            const e = sorted[i];
+            var db: [12]u8 = undefined;
+            const dist = estDistanceMeters(e);
+            const dstr = if (dist < 10)
+                std.fmt.bufPrint(&db, "~{d:.1}m", .{dist}) catch ""
+            else
+                std.fmt.bufPrint(&db, "~{d}m", .{@as(u32, @intFromFloat(dist))}) catch "";
+            const row_sel = (i == sel_idx);
+            const row_st: Style = if (row_sel) .{ .fg = 255, .bg = c_sel_bg, .bold = true } else .{ .fg = c_base };
+            if (row_sel) s.fillRect(px, row, 22, 1, row_st);
+            s.put(px, row, if (row_sel) '>' else ' ', row_st);
+            s.put(px + 1, row, deviceGlyph(e), .{ .fg = if (row_sel) 255 else rssiColor(e.rssiAvg()), .bg = row_st.bg, .bold = true });
+            var nb: [17]u8 = undefined;
+            var nm: []const u8 = e.name();
+            if (nm.len == 0) nm = model.formatMac(e.addr, &nb);
+            s.textBounded(px + 3, row, nm, 14, row_st);
+            _ = s.text(px + 18, row, dstr, .{ .fg = if (row_sel) 255 else c_dim, .bg = row_st.bg });
+        }
+        if (i < sorted.len) {
+            s.put(px + 21, s.h - 3, if (screen_mod.ascii) 'v' else '↓', .{ .fg = c_accent });
+        }
+    }
+
+    // Honesty footer.
+    {
+        const msg = "≈ distance from signal strength · no directional data";
+        const mw: u32 = @intCast(msg.len);
+        if (mw + 2 < s.w) {
+            _ = s.text((s.w - mw) / 2, s.h - 2, msg, .{ .fg = c_dim });
+        }
+    }
+}
+
+fn isGlyph(s: *Screen, x: u32, y: u32) bool {
+    if (x >= s.w or y >= s.h) return true;
+    const ch = s.back[@as(usize, y) * s.w + x].ch;
+    return (ch >= 'A' and ch <= 'Z') or (ch >= '0' and ch <= '9');
+}
+
 pub fn drawHelpOverlay(s: *Screen) void {
     const bw: u32 = @min(46, if (s.w > 4) s.w - 4 else s.w);
     const bh: u32 = @min(16, if (s.h > 2) s.h - 2 else s.h);
@@ -388,6 +599,7 @@ pub fn drawHelpOverlay(s: *Screen) void {
         .{ "Esc", "back to device list" },
         .{ "s", "cycle sort mode" },
         .{ "/", "filter: text, mac: name: company: type: rssi:-70" },
+        .{ "m", "radar view (approx. distance rings, no bearing)" },
         .{ "Esc", "clear the active filter" },
         .{ "c", "clear device list" },
         .{ "p", "pause / resume capture" },

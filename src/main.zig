@@ -569,6 +569,77 @@ fn runSelftest(io: std.Io, gpa: std.mem.Allocator, opts: Options) !u8 {
     }
     app.draw(&screen, now);
 
+    // Radar view toggle.
+    press(&app, .char, 'm');
+    if (app.view != .radar) {
+        try errPrint(io, "selftest: m did not open the radar view\n", .{});
+        return 1;
+    }
+    app.draw(&screen, now);
+    try dumpFrame(io, gpa, &screen, "frame 3d: radar view");
+    {
+        var saw_center = false;
+        var saw_rings = false;
+        var y: u32 = 0;
+        while (y < screen.h) : (y += 1) {
+            var x: u32 = 0;
+            while (x < screen.w) : (x += 1) {
+                const ch = screen.back[@as(usize, y) * screen.w + x].ch;
+                if (ch == '⌖' or ch == '@') saw_center = true;
+                if (ch == '·' or ch == '.') saw_rings = true;
+            }
+        }
+        if (!saw_center or !saw_rings) {
+            try errPrint(io, "selftest: radar center/rings not rendered\n", .{});
+            return 1;
+        }
+    }
+    const radar_before = app.radarSelIndex();
+    press(&app, .char, 'j');
+    const radar_expect = @min(radar_before + 1, app.radar_order.items.len - 1);
+    if (app.radarSelIndex() != radar_expect) {
+        try errPrint(io, "selftest: j did not move the radar selection ({d} != {d})\n", .{ app.radarSelIndex(), radar_expect });
+        return 1;
+    }
+    app.draw(&screen, now);
+
+    // Walk to the far end: the panel scrolls, selection reaches the last.
+    press(&app, .end, 0);
+    const n_dev = app.radar_order.items.len;
+    if (app.radarSelIndex() != n_dev - 1) {
+        try errPrint(io, "selftest: end did not jump to the farthest device ({d}/{d})\n", .{ app.radarSelIndex(), n_dev });
+        return 1;
+    }
+    app.draw(&screen, now);
+    try dumpFrame(io, gpa, &screen, "frame 3d2: radar (panel scrolled to end)");
+    press(&app, .home, 0);
+    if (app.radarSelIndex() != 0) {
+        try errPrint(io, "selftest: home did not return to the nearest\n", .{});
+        return 1;
+    }
+
+    // Enter opens details; Esc returns to the radar, not the list.
+    press(&app, .enter, 0);
+    if (app.view != .detail) {
+        try errPrint(io, "selftest: enter did not open details from radar\n", .{});
+        return 1;
+    }
+    app.draw(&screen, now);
+    try dumpFrame(io, gpa, &screen, "frame 3e: detail opened from radar");
+    press(&app, .escape, 0);
+    if (app.view != .radar) {
+        try errPrint(io, "selftest: esc from detail did not return to radar\n", .{});
+        return 1;
+    }
+    app.draw(&screen, now);
+
+    press(&app, .char, 'm');
+    if (app.view != .list) {
+        try errPrint(io, "selftest: m did not return to the list\n", .{});
+        return 1;
+    }
+    app.draw(&screen, now);
+
     // Help overlay.
     press(&app, .char, '?');
     app.draw(&screen, now);

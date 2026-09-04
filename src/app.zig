@@ -29,7 +29,7 @@ pub const SortMode = enum(u2) {
     }
 };
 
-pub const View = enum { list, detail };
+pub const View = enum { list, detail, radar };
 
 pub const BackendCode = enum { starting, started, stopped, failed };
 
@@ -61,7 +61,10 @@ pub const App = struct {
     filter_len: usize = 0,
 
     ordered: std.ArrayList(*store_mod.Entry) = .empty,
+    radar_order: std.ArrayList(*store_mod.Entry) = .empty,
     sel_key: ?u64 = null,
+    /// Where Esc from the detail view returns to (list or radar).
+    detail_return: View = .list,
 
     detail_key: ?u64 = null,
     detail_scroll: u32 = 0,
@@ -74,6 +77,7 @@ pub const App = struct {
 
     pub fn deinit(self: *App) void {
         self.ordered.deinit(self.gpa);
+        self.radar_order.deinit(self.gpa);
         self.detail_lines.deinit(self.gpa);
         self.detail_txt.deinit(self.gpa);
     }
@@ -124,8 +128,64 @@ pub const App = struct {
         }
         switch (self.view) {
             .list => self.handleListKey(k),
+            .radar => self.handleRadarKey(k),
             .detail => self.handleDetailKey(k),
         }
+    }
+
+    fn handleRadarKey(self: *App, k: input.Key) void {
+        switch (k.code) {
+            .escape => self.view = .list,
+            .up => self.moveRadarSel(false),
+            .down => self.moveRadarSel(true),
+            .page_up => self.moveRadarSel(false),
+            .page_down => self.moveRadarSel(true),
+            .home => {
+                if (self.radar_order.items.len > 0) self.sel_key = self.radar_order.items[0].key;
+            },
+            .end => {
+                if (self.radar_order.items.len > 0) {
+                    self.sel_key = self.radar_order.items[self.radar_order.items.len - 1].key;
+                }
+            },
+            .enter => self.openDetail(.radar),
+            .char => switch (k.ch) {
+                'm' => self.view = .list,
+                'j', 'k' => {
+                    const down = k.ch == 'j';
+                    self.moveRadarSel(down);
+                },
+                // Sorting/raw are list-only presentations; everything else
+                // behaves like the list so navigation stays uniform.
+                's', 'r' => {},
+                else => self.handleListKey(k),
+            },
+            else => self.handleListKey(k),
+        }
+    }
+
+    fn moveRadarSel(self: *App, down: bool) void {
+        const n = self.radar_order.items.len;
+        if (n == 0) return;
+        const idx = self.radarSelIndex();
+        const new_idx = if (down) @min(idx + 1, n - 1) else idx -| 1;
+        self.sel_key = self.radar_order.items[new_idx].key;
+    }
+
+    fn openDetail(self: *App, from: View) void {
+        const list = switch (from) {
+            .radar => self.radar_order.items,
+            else => self.ordered.items,
+        };
+        if (list.len == 0) return;
+        const idx = switch (from) {
+            .radar => self.radarSelIndex(),
+            else => self.selIndex(),
+        };
+        self.detail_key = list[idx].key;
+        self.detail_scroll = 0;
+        self.detail_return = from;
+        self.view = .detail;
     }
 
     fn handleFilterEditKey(self: *App, k: input.Key) void {
@@ -190,12 +250,7 @@ pub const App = struct {
             .end => if (n > 0) {
                 self.sel_key = self.ordered.items[n - 1].key;
             },
-            .enter => if (n > 0) {
-                const idx = self.selIndex();
-                self.detail_key = self.ordered.items[idx].key;
-                self.detail_scroll = 0;
-                self.view = .detail;
-            },
+            .enter => self.openDetail(.list),
             .escape => {
                 if (self.filter.active()) {
                     self.filter = .{}; // clear filter
@@ -225,6 +280,7 @@ pub const App = struct {
                 },
                 'p' => self.paused = !self.paused,
                 'r' => self.show_raw = !self.show_raw,
+                'm' => self.view = .radar,
                 'f' => {
                     self.filter_edit = true;
                     self.filter_len = self.filter.raw_len;
@@ -250,7 +306,7 @@ pub const App = struct {
         else
             0;
         switch (k.code) {
-            .escape => self.view = .list,
+            .escape => self.view = self.detail_return,
             .up => self.detail_scroll -|= 1,
             .down => self.detail_scroll = @min(self.detail_scroll + 1, max_scroll),
             .page_up => self.detail_scroll -|= 10,
@@ -269,16 +325,24 @@ pub const App = struct {
     }
 
     pub fn selIndex(self: *App) usize {
-        const n = self.ordered.items.len;
+        return self.selIndexIn(self.ordered.items);
+    }
+
+    pub fn radarSelIndex(self: *App) usize {
+        return self.selIndexIn(self.radar_order.items);
+    }
+
+    fn selIndexIn(self: *App, list: []*store_mod.Entry) usize {
+        const n = list.len;
         if (n == 0) return 0;
         const want = self.sel_key orelse {
-            self.sel_key = self.ordered.items[0].key;
+            self.sel_key = list[0].key;
             return 0;
         };
-        for (self.ordered.items, 0..) |e, i| {
+        for (list, 0..) |e, i| {
             if (e.key == want) return i;
         }
-        self.sel_key = self.ordered.items[0].key;
+        self.sel_key = list[0].key;
         return 0;
     }
 
@@ -327,6 +391,16 @@ pub const App = struct {
             }
             self.ordered.shrinkRetainingCapacity(w);
         }
+
+        // Radar navigation order: nearest (strongest signal) first.
+        self.radar_order.clearRetainingCapacity();
+        self.radar_order.appendSlice(self.gpa, self.ordered.items) catch return;
+        const RadarCtx = struct {
+            fn lessThan(_: void, a: *store_mod.Entry, b: *store_mod.Entry) bool {
+                return a.rssiAvg() > b.rssiAvg();
+            }
+        };
+        std.mem.sort(*store_mod.Entry, self.radar_order.items, {}, RadarCtx.lessThan);
     }
 
     pub fn draw(self: *App, s: *widgets.Screen, now_ms: i64) void {
@@ -348,6 +422,17 @@ pub const App = struct {
                 widgets.drawFilterInput(s, self.filter_buf[0..self.filter_len]);
             } else {
                 widgets.drawHints(s, widgets.Hints.list);
+            }
+        } else if (self.view == .radar) {
+            widgets.drawTopBar(s, self.backend_label, self.store.count(), now_ms, self.paused, self.sort.label(), if (self.filter.active()) self.filter.rawText() else null);
+            widgets.drawRadar(s, self.radar_order.items, self.radarSelIndex(), now_ms);
+            if (self.ordered.items.len == 0) {
+                widgets.drawEmpty(s, if (self.store.count() == 0) "listening for BLE advertisements…" else "no devices match the filter");
+            }
+            if (self.filter_edit) {
+                widgets.drawFilterInput(s, self.filter_buf[0..self.filter_len]);
+            } else {
+                widgets.drawHints(s, widgets.Hints.radar);
             }
         } else if (self.detail_key != null and self.store.get(self.detail_key.?) != null) {
             self.buildDetail(self.store.get(self.detail_key.?).?, now_ms);
