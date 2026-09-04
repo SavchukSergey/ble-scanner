@@ -1,0 +1,42 @@
+{"mac":"C8:47:8C:11:22:33","atype":1,"etype":"ConnectableUndirected","rssi":-52,"name":"MI Smart Band 8","secs":[{"t":1,"d":"06"},{"t":3,"d":"95FE0F18"},{"t":22,"d":"95FE4098011E0100"},{"t":255,"d":"8F03580105000000"}],"ts":1000}
+{"mac":"88:66:A5:44:55:66","atype":1,"etype":"ConnectableUndirected","rssi":-60,"secs":[{"t":1,"d":"1A"},{"t":255,"d":"4C000719072064000000105F"}],"ts":2000}
+{"mac":"E7:B1:0A:AA:BB:CC","atype":1,"etype":"NonConnectableUndirected","rssi":-75,"secs":[{"t":1,"d":"06"},{"t":255,"d":"4C000215E2C56DB5DFFB48D2B060D0F5A71096E000010002C5"}],"ts":3000}
+{"mac":"F1:6C:0D:99:88:77","atype":1,"etype":"ScannableUndirected","rssi":-69,"secs":[{"t":1,"d":"06"},{"t":22,"d":"AAFE10EE03636F6666656500"}],"ts":4000}
+{"mac":"7A:D9:2C:31:41:52","atype":0,"etype":"ConnectableUndirected","rssi":-63,"name":"Pixel 8","secs":[{"t":1,"d":"06"},{"t":3,"d":"2CFE"},{"t":22,"d":"2CFE0184020102030405060708090A0B0C0D0E0F"},{"t":255,"d":"E0000184020102030405060708"}],"ts":5000}
+{"mac":"C8:47:8C:11:22:33","atype":1,"etype":"ConnectableUndirected","rssi":-55,"name":"MI Smart Band 8","secs":[{"t":1,"d":"06"},{"t":3,"d":"95FE0F18"},{"t":22,"d":"95FE4098011E0102"},{"t":255,"d":"8F03580105000000"}],"ts":6000}
+{"mac":"5C:B3:41:9A:BC:DE","atype":0,"etype":"NonConnectableUndirected","rssi":-80,"secs":[{"t":255,"d":"06000100021234567890"}],"ts":7000}
+{"mac":"CC:C2:60:12:34:56","atype":1,"etype":"ConnectableUndirected","rssi":-57,"secs":[{"t":1,"d":"06"},{"t":3,"d":"1218"},{"t":25,"d":"C103"},{"t":9,"d":"4B333830"}],"ts":8000}
+{"mac":"0A:0B:0C:0D:0E:0F","atype":1,"etype":"ConnectableUndirected","rssi":-88,"secs":[{"t":1,"d":"06"},{"t":3,"d":"0F18"},{"t":255,"d":"5701FFEE0011223344"}],"ts":9000}
+{"mac":"C8:47:8C:11:22:33","atype":1,"etype":"ConnectableUndirected","rssi":-61,"name":"MI Smart Band 8","secs":[{"t":1,"d":"06"},{"t":3,"d":"95FE0F18"},{"t":22,"d":"95FE4098011E0100"},{"t":255,"d":"8F03580105000000"}],"ts":11000}
+{"mac":"88:66:A5:44:55:66","atype":1,"etype":"ScanResponse","rssi":-64,"secs":[{"t":9,"d":"416972506F64732050726F"}],"ts":12000}
+{"mac":"F1:6C:0D:99:88:77","atype":1,"etype":"ScannableUndirected","rssi":-72,"secs":[{"t":1,"d":"06"},{"t":22,"d":"AAFE10EE03636F6666656500"}],"ts":13000}
+{"mac":"0A:0B:0C:0D:0E:0F","atype":1,"etype":"ConnectableUndirected","rssi":-86,"secs":[{"t":1,"d":"06"},{"t":3,"d":"0F18"},{"t":255,"d":"5701FFEE0011223344"}],"ts":14000}
+{"mac":"CC:C2:60:12:34:56","atype":1,"etype":"ConnectableUndirected","rssi":-55,"secs":[{"t":1,"d":"06"},{"t":3,"d":"1218"},{"t":25,"d":"C103"},{"t":9,"d":"4B333830"}],"ts":15000}
+{"mac":"C8:47:8C:11:22:33","atype":1,"etype":"ConnectableUndirected","rssi":-49,"name":"MI Smart Band 8","secs":[{"t":1,"d":"06"},{"t":3,"d":"95FE0F18"},{"t":22,"d":"95FE4098011E0103"},{"t":255,"d":"8F03580105000000"}],"ts":16000}
+{"mac":"88:66:A5:44:55:66","atype":1,"etype":"ConnectableUndirected","rssi":-61,"secs":[{"t":1,"d":"1A"},{"t":255,"d":"4C000719072064000000105F"}],"ts":17000}
+{"mac":"E7:B1:0A:AA:BB:CC","atype":1,"etype":"NonConnectableUndirected","rssi":-78,"secs":[{"t":1,"d":"06"},{"t":255,"d":"4C000215E2C56DB5DFFB48D2B060D0F5A71096E000010002C5"}],"ts":18000}
+{"mac":"AA:BB:CC:00:11:22","atype":1,"etype":"ConnectableUndirected","rssi":-66,"name":"Amazfit Band 7","secs":[{"t":1,"d":"06"},{"t":255,"d":"57010001FF"}],"ts":19000}
+{"mac":"5C:B3:41:9A:BC:DE","atype":0,"etype":"NonConnectableUndirected","rssi":-79,"secs":[{"t":255,"d":"06000100021234567890"}],"ts":20000}
+{"mac":"C8:47:8C:11:22:33","atype":1,"etype":"ConnectableUndirected","rssi":-58,"name":"MI Smart Band 8","secs":[{"t":1,"d":"06"},{"t":3,"d":"95FE0F18"},{"t":22,"d":"95FE4098011E0101"},{"t":255,"d":"8F03580105000000"}],"ts":21000}
+{"mac":"7A:D9:2C:31:41:52","atype":0,"etype":"ConnectableUndirected","rssi":-67,"name":"Pixel 8","secs":[{"t":1,"d":"06"},{"t":3,"d":"2CFE"},{"t":22,"d":"2CFE0184020102030405060708090A0B0C0D0E0F"},{"t":255,"d":"E0000184020102030405060708"}],"ts":22000}
+{"mac":"10:2A:B3:CD:EF:01","atype":1,"etype":"ConnectableUndirected","rssi":-73,"secs":[{"t":1,"d":"1A"},{"t":22,"d":"6FFD00112233445566778899AABBCCDDEEFF0011AABB"}],"ts":24000}
+{"mac":"F1:6C:0D:99:88:77","atype":1,"etype":"ScannableUndirected","rssi":-70,"secs":[{"t":1,"d":"06"},{"t":22,"d":"AAFE10EE03636F6666656500"}],"ts":25000}
+{"mac":"C8:47:8C:11:22:33","atype":1,"etype":"ConnectableUndirected","rssi":-63,"name":"MI Smart Band 8","secs":[{"t":1,"d":"06"},{"t":3,"d":"95FE0F18"},{"t":22,"d":"95FE4098011E0100"},{"t":255,"d":"8F03580105000000"}],"ts":26000}
+{"mac":"E7:B1:0A:AA:BB:CC","atype":1,"etype":"NonConnectableUndirected","rssi":-82,"secs":[{"t":1,"d":"06"},{"t":255,"d":"4C000215E2C56DB5DFFB48D2B060D0F5A71096E000010002C5"}],"ts":27000}
+{"mac":"CC:C2:60:12:34:56","atype":1,"etype":"ConnectableUndirected","rssi":-60,"secs":[{"t":1,"d":"06"},{"t":3,"d":"1218"},{"t":25,"d":"C103"},{"t":9,"d":"4B333830"}],"ts":32000}
+{"mac":"7A:D9:2C:31:41:52","atype":0,"etype":"ConnectableUndirected","rssi":-70,"name":"Pixel 8","secs":[{"t":1,"d":"06"},{"t":3,"d":"2CFE"},{"t":22,"d":"2CFE0184020102030405060708090A0B0C0D0E0F"},{"t":255,"d":"E0000184020102030405060708"}],"ts":33000}
+{"mac":"AA:BB:CC:00:11:22","atype":1,"etype":"ConnectableUndirected","rssi":-69,"name":"Amazfit Band 7","secs":[{"t":1,"d":"06"},{"t":255,"d":"57010001FF"}],"ts":33000}
+{"mac":"88:66:A5:44:55:66","atype":1,"etype":"ConnectableUndirected","rssi":-66,"secs":[{"t":1,"d":"1A"},{"t":255,"d":"4C000719072064000000105F"}],"ts":30000}
+{"mac":"E7:B1:0A:AA:BB:CC","atype":1,"etype":"NonConnectableUndirected","rssi":-79,"secs":[{"t":1,"d":"06"},{"t":255,"d":"4C000215E2C56DB5DFFB48D2B060D0F5A71096E000010002C5"}],"ts":40000}
+{"mac":"AA:BB:CC:00:11:22","atype":1,"etype":"ConnectableUndirected","rssi":-71,"name":"Amazfit Band 7","secs":[{"t":1,"d":"06"},{"t":255,"d":"57010001FF"}],"ts":44000}
+{"mac":"CC:C2:60:12:34:56","atype":1,"etype":"ConnectableUndirected","rssi":-58,"secs":[{"t":1,"d":"06"},{"t":3,"d":"1218"},{"t":25,"d":"C103"},{"t":9,"d":"4B333830"}],"ts":46000}
+{"mac":"7A:D9:2C:31:41:52","atype":0,"etype":"ConnectableUndirected","rssi":-64,"name":"Pixel 8","secs":[{"t":1,"d":"06"},{"t":3,"d":"2CFE"},{"t":22,"d":"2CFE0184020102030405060708090A0B0C0D0E0F"},{"t":255,"d":"E0000184020102030405060708"}],"ts":47000}
+{"mac":"10:2A:B3:CD:EF:01","atype":1,"etype":"ConnectableUndirected","rssi":-77,"secs":[{"t":1,"d":"1A"},{"t":22,"d":"6FFD00112233445566778899AABBCCDDEEFF0011AABB"}],"ts":48000}
+{"mac":"C8:47:8C:11:22:33","atype":1,"etype":"ConnectableUndirected","rssi":-50,"name":"MI Smart Band 8","secs":[{"t":1,"d":"06"},{"t":3,"d":"95FE0F18"},{"t":22,"d":"95FE4098011E0100"},{"t":255,"d":"8F03580105000000"}],"ts":55000}
+{"mac":"7A:D9:2C:31:41:52","atype":0,"etype":"ConnectableUndirected","rssi":-68,"name":"Pixel 8","secs":[{"t":1,"d":"06"},{"t":3,"d":"2CFE"},{"t":22,"d":"2CFE0184020102030405060708090A0B0C0D0E0F"},{"t":255,"d":"E0000184020102030405060708"}],"ts":56000}
+{"mac":"10:2A:B3:CD:EF:01","atype":1,"etype":"ConnectableUndirected","rssi":-74,"secs":[{"t":1,"d":"1A"},{"t":22,"d":"6FFD00112233445566778899AABBCCDDEEFF0011AABB"}],"ts":57000}
+{"mac":"AA:BB:CC:00:11:22","atype":1,"etype":"ConnectableUndirected","rssi":-67,"name":"Amazfit Band 7","secs":[{"t":1,"d":"06"},{"t":255,"d":"57010001FF"}],"ts":58000}
+{"mac":"D4:CA:6E:12:34:56","atype":1,"etype":"ConnectableUndirected","rssi":-62,"name":null,"secs":[{"t":1,"d":"06"},{"t":19,"d":"5B05"},{"t":3,"d":"95FE0F18"},{"t":22,"d":"95FE08005B051001C8478C11223304010020"}],"ts":56000}
+{"mac":"D4:CA:6E:12:34:56","atype":1,"etype":"ConnectableUndirected","rssi":-58,"name":null,"secs":[{"t":1,"d":"06"},{"t":19,"d":"5B05"},{"t":3,"d":"95FE0F18"},{"t":22,"d":"95FE08005B052102C8478C11223304010020"}],"ts":57500}
+{"mac":"DE:AD:BE:E0:00:01","atype":0,"etype":"ConnectableUndirected","rssi":-77,"secs":[{"t":1,"d":"06"},{"t":19,"d":"0104"},{"t":255,"d":"0600010002020000B4004F00780042006F0078002000"}],"ts":56500}
+{"mac":"F0:0D:BA:11:22:33","atype":1,"etype":"ScannableUndirected","rssi":-84,"secs":[{"t":1,"d":"06"},{"t":22,"d":"AAFE20000C80000E6000000A0000003C00"}],"ts":57000}
