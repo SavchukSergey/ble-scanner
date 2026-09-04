@@ -136,7 +136,9 @@ const Runner = struct {
             },
             .linux_hci => |h| {
                 h.stop();
-                self.thread.join();
+                // The blocked read may not wake on close on all kernels;
+                // detach and let process exit clean up.
+                self.thread.detach();
                 h.gpa.destroy(h);
             },
         }
@@ -261,6 +263,7 @@ fn runCapture(io: std.Io, gpa: std.mem.Allocator, opts: Options) !u8 {
         try errPrint(io, "error: cannot start backend: {t}\n", .{e});
         return 1;
     };
+    errdefer runner.stop();
 
     var log_file = std.Io.Dir.cwd().createFile(io, log_path, .{}) catch |e| {
         try errPrint(io, "error: cannot open log file '{s}': {t}\n", .{ log_path, e });

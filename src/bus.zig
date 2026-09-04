@@ -25,22 +25,40 @@ pub const Bus = struct {
     mutex: std.Io.Mutex = .init,
     cond: std.Io.Condition = .init,
     queue: std.ArrayList(Event) = .empty,
+    /// Set by deinit; makes push() a no-op so detached threads holding a
+    /// stale pointer at shutdown can't write into freed memory.
+    shutdown: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
     pub fn init(io: std.Io, gpa: std.mem.Allocator) Bus {
         return .{ .io = io, .gpa = gpa };
     }
 
     pub fn deinit(self: *Bus) void {
+        self.mutex.lockUncancelable(self.io);
+        self.shutdown.store(true, .release);
         self.queue.deinit(self.gpa);
+        self.mutex.unlock(self.io);
     }
 
-    /// Called from any thread. Wakes the consumer.
+    /// Called from any thread. Wakes the consumer. No-op after deinit.
     pub fn push(self: *Bus, ev: Event) void {
+        if (self.shutdown.load(.acquire)) {
+            switch (ev) {
+                .adv => |a| a.deinit(self.gpa),
+                .key, .backend => {},
+            }
+            return;
+        }
         self.mutex.lockUncancelable(self.io);
         defer self.mutex.unlock(self.io);
+        if (self.shutdown.load(.acquire)) {
+            switch (ev) {
+                .adv => |a| a.deinit(self.gpa),
+                .key, .backend => {},
+            }
+            return;
+        }
         self.queue.append(self.gpa, ev) catch {
-            // Out of memory: drop a key event, or an adv event (freeing it)
-            // rather than dying — the UI keeps running.
             switch (ev) {
                 .adv => |a| a.deinit(self.gpa),
                 .key, .backend => {},

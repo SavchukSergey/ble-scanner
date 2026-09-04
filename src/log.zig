@@ -27,7 +27,7 @@ pub fn writeEvent(w: *std.Io.Writer, ev: *const model.AdvEvent) !void {
         try w.writeAll("null");
     }
     try w.writeAll(",\"secs\":[");
-    var hex: [512]u8 = undefined;
+    var hex: [2048]u8 = undefined; // extended adv can reach ~1650 bytes
     for (ev.sections, 0..) |sec, i| {
         if (i > 0) try w.writeByte(',');
         try w.print("{{\"t\":{d},\"d\":\"{s}\"}}", .{ sec.typ, model.hexEncode(sec.data, &hex) });

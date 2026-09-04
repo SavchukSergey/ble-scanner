@@ -453,7 +453,7 @@ pub fn category(id: u8) ?[]const u8 {
 
 /// "Watch" / "Sports Watch" for a raw appearance value.
 pub fn nameFor(appearance: u16) []const u8 {
-    const cat: u8 = @intCast(appearance >> 6);
+    const cat: u8 = @intCast((appearance >> 6) & 0xFF); // clamp: raw device data
     const sub: u8 = @intCast(appearance & 0x3F);
     const c = category(cat) orelse return "unknown";
     if (sub == 0) return c;

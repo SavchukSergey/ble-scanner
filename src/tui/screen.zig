@@ -46,9 +46,10 @@ pub const Screen = struct {
         @memset(cells, .{});
         self.gpa.free(self.back);
         self.back = cells;
-        self.gpa.free(self.front);
-        self.front = try self.gpa.alloc(Cell, @as(usize, w) * h);
-        @memset(self.front, .{});
+        const cells2 = try self.gpa.alloc(Cell, @as(usize, w) * h);
+        @memset(cells2, .{});
+        self.gpa.free(self.front); // free old only after new alloc succeeds
+        self.front = cells2;
         self.w = w;
         self.h = h;
     }

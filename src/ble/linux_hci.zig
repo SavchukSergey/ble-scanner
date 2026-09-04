@@ -218,18 +218,18 @@ pub const LinuxHci = struct {
         var p: usize = 1;
         var i: u8 = 0;
         while (i < n) : (i += 1) {
-            // evt_type u16, addr_type u8, addr[6], primary u8, secondary u8,
+            // evt_type u16, addr_type u8, addr[6], primary_phy u8, secondary_phy u8,
             // sid u8, tx i8, rssi i8, period u16, dir_type u8, dir_addr[6],
             // data_len u8, data
-            if (p + 25 > body.len) return;
+            if (p + 25 > body.len) return; // header before data: 2+1+6+1+1+1+1+1+2+1+6+1 = 24
             const evt_type = std.mem.readInt(u16, body[p..][0..2], .little);
             const addr_type = body[p + 2] & 0x03;
             var addr: [6]u8 = undefined;
             for (0..6) |k| addr[k] = body[p + 3 + 5 - k];
-            const tx: i8 = @bitCast(body[p + 8]);
-            const rssi: i8 = @bitCast(body[p + 9]);
-            const dlen = body[p + 19];
-            p += 20;
+            const tx: i8 = @bitCast(body[p + 12]);
+            const rssi: i8 = @bitCast(body[p + 13]);
+            const dlen = body[p + 23];
+            p += 24;
             if (p + dlen > body.len) return;
             const data = body[p .. p + dlen];
             p += dlen;
@@ -310,7 +310,8 @@ pub const LinuxHci = struct {
             0x02, 0x00, 0x00,
         };
         self.writeCmd(&disable);
-        // A blocking read on the raw socket wakes on close with EBADF.
+        // Close wakes the blocked readStreaming on most kernels; on
+        // those where it doesn't, the process _exit() will.
         self.file().close(self.io);
     }
 };

@@ -177,6 +177,7 @@ pub const Slam = struct {
             if (touches and e.range_edge) {
                 e.target = dist_m;
                 e.weight = w;
+                self.last_count.put(key, events_total) catch {};
                 return;
             }
         }

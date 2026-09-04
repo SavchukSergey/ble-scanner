@@ -150,7 +150,10 @@ pub const Store = struct {
             if (self.list.items.len >= max_devices) {
                 self.dropOldest();
             }
-            e = self.gpa.create(Entry) catch return;
+            e = self.gpa.create(Entry) catch {
+                _ = self.map.remove(key); // undo the getOrPut on OOM
+                return;
+            };
             e.* = .{
                 .key = key,
                 .addr = ev.addr,
@@ -236,17 +239,14 @@ fn localNameFromSections(sections: []const model.AdSection) []const u8 {
     return fallback;
 }
 /// Replace control characters / invalid UTF-8 lead bytes with '?' so the
-/// renderer never gets garbage (full UTF-8 validation lands with the M3
-/// polish; this covers the common trash cases).
+/// renderer never gets garbage. Cuts at the FIRST control char.
 fn sanitizeName(s: []const u8) []const u8 {
-    // Trim trailing NULs (devices pad names with zeros).
     var end = s.len;
     while (end > 0 and (s[end - 1] == 0 or s[end - 1] == ' ')) end -= 1;
-    var out = s[0..end];
-    for (out, 0..) |c, i| {
-        if (c < 0x20 or c == 0x7F) out = out[0..i]; // cut at first control char
+    for (s[0..end], 0..) |c, i| {
+        if (c < 0x20 or c == 0x7F) return s[0..i]; // cut at first control
     }
-    return out;
+    return s[0..end];
 }
 
 /// Merge incoming sections into the entry's snapshot, per section type:
@@ -281,18 +281,26 @@ fn copySections(self: *Store, e: *Entry, sections: []const model.AdSection) void
     var total: usize = 0;
     const max_blob: usize = 4096;
     for (views[0..n], 0..) |v, i| {
-        if (total + v.data.len > max_blob) break;
-        offs[i] = @intCast(total);
+        offs[i] = @intCast(total); // valid for all i < n_staged
+        if (total + v.data.len > max_blob) break; // stop staging
         scratch.appendSlice(self.gpa, v.data) catch return;
         total += v.data.len;
     }
+    // Count only the successfully staged views.
+    const n_staged: usize = blk: {
+        var cnt: usize = 0;
+        for (views[0..n], 0..) |v, i| {
+            if (offs[i] + v.data.len > total) break;
+            cnt = i + 1;
+        }
+        break :blk cnt;
+    };
 
     e.blob.clearRetainingCapacity();
     e.sec_typ.clearRetainingCapacity();
     e.sec_off.clearRetainingCapacity();
     e.sec_len.clearRetainingCapacity();
-    for (views[0..n], 0..) |v, i| {
-        if (offs[i] + v.data.len > total) break;
+    for (views[0..n_staged], 0..) |v, i| {
         e.blob.appendSlice(self.gpa, scratch.items[offs[i]..][0..v.data.len]) catch return;
         e.sec_typ.append(self.gpa, v.typ) catch return;
         e.sec_off.append(self.gpa, offs[i]) catch return;

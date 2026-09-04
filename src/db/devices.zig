@@ -202,7 +202,7 @@ pub fn hidSubkind(sub: u8) ?Kind {
 
 /// Appearance value → refined kind (keyboard/mouse for HID subs).
 pub fn kindForAppearance(appearance: u16) ?Kind {
-    const cat: u8 = @intCast(appearance >> 6);
+    const cat: u8 = @intCast((appearance >> 6) & 0xFF); // clamp: raw device data
     const sub: u8 = @intCast(appearance & 0x3F);
     if (cat == 0x0F) {
         if (hidSubkind(sub)) |k| return k;
