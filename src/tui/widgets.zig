@@ -120,7 +120,9 @@ fn queryUtcOffset(now_s: i64) i64 {
 /// Read the current UTC offset from /etc/localtime (TZif v2).
 /// Falls back to UTC when the file is missing or unparseable.
 fn linuxUtcOffset(now_s: i64) i64 {
-    const io = std.Io.Threaded.init(std.heap.page_allocator) catch return 0;
+    var threaded: std.Io.Threaded = .init(std.heap.page_allocator, .{});
+    defer threaded.deinit();
+    const io = threaded.io();
     const file = std.Io.Dir.cwd().openFile(io, "/etc/localtime", .{}) catch return 0;
     defer file.close(io);
     var fbuf: [4096]u8 = undefined;
