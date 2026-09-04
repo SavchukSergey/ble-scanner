@@ -93,8 +93,8 @@ pub fn drawTopBar(s: *Screen, backend: []const u8, n_dev: usize, now_ms: i64, pa
 }
 
 pub const Hints = struct {
-    pub const list = "↑↓ select · ⏎ details · / filter · m radar · r raw · s sort · c clear · p pause · ? help · q quit";
-    pub const radar = "↑↓ select · ⏎ details · s map · m list · / filter · p pause · ? help · q quit";
+    pub const list = "↑↓ select · ⏎ details · m view · / filter · r raw · s sort · c clear · p pause · ? help · q quit";
+    pub const radar = "↑↓ select · ⏎ details · m view · / filter · p pause · ? help · q quit";
     pub const detail = "↑↓ scroll · PgUp/PgDn page · Esc back · ? help · q quit";
 };
 
@@ -762,8 +762,8 @@ pub fn drawHelpOverlay(s: *Screen) void {
         .{ "Esc", "back to device list" },
         .{ "s", "cycle sort mode" },
         .{ "/", "filter: text, mac: name: company: type: rssi:-70" },
-        .{ "m", "radar view (approx. distance rings, no bearing)" },
-        .{ "s (radar)", "toggle SLAM map mode · x resets it" },
+        .{ "m", "cycle view: list · radar rings · SLAM map" },
+        .{ "s (radar/map)", "toggle rings ↔ SLAM map · x resets the solve" },
         .{ "Esc", "clear the active filter" },
         .{ "c", "clear device list" },
         .{ "p", "pause / resume capture" },

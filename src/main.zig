@@ -633,22 +633,22 @@ fn runSelftest(io: std.Io, gpa: std.mem.Allocator, opts: Options) !u8 {
     }
     app.draw(&screen, now);
 
-    press(&app, .char, 'm');
+    press(&app, .escape, 0);
     if (app.view != .list) {
-        try errPrint(io, "selftest: m did not return to the list\n", .{});
+        try errPrint(io, "selftest: esc did not leave the radar view\n", .{});
         return 1;
     }
     app.draw(&screen, now);
 
-    // Map mode: re-enter radar, 's' toggles, SLAM steps render.
+    // Map mode: cycle in (m: list->rings, m: rings->map), SLAM steps render.
     press(&app, .char, 'm');
-    if (app.view != .radar) {
-        try errPrint(io, "selftest: m did not re-enter radar\n", .{});
+    if (app.view != .radar or app.map_mode) {
+        try errPrint(io, "selftest: m cycle did not reach rings\n", .{});
         return 1;
     }
-    press(&app, .char, 's');
-    if (!app.map_mode) {
-        try errPrint(io, "selftest: s did not toggle map mode\n", .{});
+    press(&app, .char, 'm');
+    if (app.view != .radar or !app.map_mode) {
+        try errPrint(io, "selftest: m cycle did not reach map mode\n", .{});
         return 1;
     }
     app.draw(&screen, now);
@@ -676,9 +676,20 @@ fn runSelftest(io: std.Io, gpa: std.mem.Allocator, opts: Options) !u8 {
         try errPrint(io, "selftest: SLAM did not take a second step\n", .{});
         return 1;
     }
+    // 's' toggles rings <-> map; then 'm' cycles map -> list.
     press(&app, .char, 's');
     if (app.map_mode) {
         try errPrint(io, "selftest: s did not toggle back to rings\n", .{});
+        return 1;
+    }
+    press(&app, .char, 's');
+    if (!app.map_mode) {
+        try errPrint(io, "selftest: s did not re-enter map\n", .{});
+        return 1;
+    }
+    press(&app, .char, 'm');
+    if (app.view != .list or app.map_mode) {
+        try errPrint(io, "selftest: m cycle did not close the loop to list\n", .{});
         return 1;
     }
     app.draw(&screen, now);

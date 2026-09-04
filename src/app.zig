@@ -141,6 +141,24 @@ pub const App = struct {
         }
     }
 
+    /// 'm' cycles the top-level views: list -> rings -> SLAM map -> list.
+    /// Detail is not part of the cycle (Esc is its only exit).
+    fn cycleView(self: *App) void {
+        switch (self.view) {
+            .list => self.view = .radar,
+            .radar => {
+                if (self.map_mode) {
+                    self.view = .list;
+                    self.map_mode = false;
+                } else {
+                    self.map_mode = true;
+                    self.slam_last_step_ms = 0; // observer step immediately
+                }
+            },
+            .detail => {},
+        }
+    }
+
     fn handleRadarKey(self: *App, k: input.Key) void {
         switch (k.code) {
             .escape => self.view = .list,
@@ -158,10 +176,15 @@ pub const App = struct {
             },
             .enter => self.openDetail(.radar),
             .char => switch (k.ch) {
-                'm' => self.view = .list,
+                'm' => self.cycleView(),
                 's' => {
-                    self.map_mode = !self.map_mode;
-                    if (self.map_mode) self.slam_last_step_ms = 0; // step immediately
+                    if (self.map_mode) {
+                        // map -> rings via cycle semantics
+                        self.map_mode = false;
+                    } else {
+                        self.map_mode = true;
+                        self.slam_last_step_ms = 0;
+                    }
                 },
                 'x' => {
                     self.slam.reset();
@@ -298,7 +321,7 @@ pub const App = struct {
                 },
                 'p' => self.paused = !self.paused,
                 'r' => self.show_raw = !self.show_raw,
-                'm' => self.view = .radar,
+                'm' => self.cycleView(),
                 'f' => {
                     self.filter_edit = true;
                     self.filter_len = self.filter.raw_len;
@@ -469,7 +492,7 @@ pub const App = struct {
             if (self.filter_edit) {
                 widgets.drawFilterInput(s, self.filter_buf[0..self.filter_len]);
             } else if (self.view == .radar and self.map_mode) {
-                widgets.drawHints(s, "↑↓ select · ⏎ details · s rings · x reset map · m list · ? help · q quit");
+                widgets.drawHints(s, "↑↓ select · ⏎ details · s rings · x reset map · m view · ? help · q quit");
             } else {
                 widgets.drawHints(s, widgets.Hints.radar);
             }
