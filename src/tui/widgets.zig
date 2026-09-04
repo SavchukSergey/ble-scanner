@@ -94,7 +94,7 @@ pub fn drawTopBar(s: *Screen, backend: []const u8, n_dev: usize, now_ms: i64, pa
 
 pub const Hints = struct {
     pub const list = "↑↓ select · ⏎ details · / filter · m radar · r raw · s sort · c clear · p pause · ? help · q quit";
-    pub const radar = "↑↓ select · ⏎ details · m list · / filter · p pause · ? help · q quit";
+    pub const radar = "↑↓ select · ⏎ details · s map · m list · / filter · p pause · ? help · q quit";
     pub const detail = "↑↓ scroll · PgUp/PgDn page · Esc back · ? help · q quit";
 };
 
