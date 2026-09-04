@@ -236,21 +236,46 @@ pub fn decodeXiaomi(data: []const u8, w: *std.Io.Writer) bool {
         rest = rest[6..];
     }
     if (encrypted) {
-        w.writeAll("payload          encrypted (Mi Beacon crypto)\n") catch {};
+        w.writeAll("payload          encrypted (Mi Beacon crypto; needs the\n") catch {};
+        w.writeAll("                 device key from the Xiaomi cloud token)\n") catch {};
         return true;
     }
     if (has_cap and rest.len >= 1) {
         const cap = rest[0];
         var feats: []const u8 = "";
-        if (cap & 0x01 != 0) feats = "connectable";
-        if (cap & 0x02 != 0) feats = if (feats.len > 0) "connectable, address" else featad("address");
+        if (cap & 0x20 != 0) feats = "connectable";
+        if (cap & 0x10 != 0) feats = if (feats.len > 0) "connectable, address" else "address";
         w.print("capabilities     0x{X:0>2} {s}\n", .{ cap, feats }) catch {};
+        rest = rest[1..];
+    }
+
+    // Sensor data objects: [id][len][value] TLVs.
+    // 0x01 battery %, 0x04 temperature (0.1 °C), 0x06 humidity (0.1 %).
+    while (rest.len >= 2) {
+        const oid = rest[0];
+        const olen: usize = rest[1];
+        if (rest.len < 2 + olen) break;
+        const val = rest[2..][0..olen];
+        switch (oid) {
+            0x01 => if (olen >= 1) {
+                w.print("battery          {d} %\n", .{val[0]}) catch {};
+            },
+            0x04 => if (olen >= 2) {
+                const t = std.mem.readInt(i16, val[0..2], .little);
+                w.print("temperature      {d}.{d} °C\n", .{ @divTrunc(t, 10), @abs(@mod(t, 10)) }) catch {};
+            },
+            0x06 => if (olen >= 2) {
+                const h = std.mem.readInt(u16, val[0..2], .little);
+                w.print("humidity         {d}.{d} %\n", .{ @divTrunc(h, 10), @mod(h, 10) }) catch {};
+            },
+            else => {
+                var hex: [32]u8 = undefined;
+                w.print("object 0x{X:0>2}       {s}\n", .{ oid, hexOf(val, &hex) }) catch {};
+            },
+        }
+        rest = rest[2 + olen ..];
     }
     return true;
-}
-
-fn featad(s: []const u8) []const u8 {
-    return s;
 }
 
 fn macStr(addr: [6]u8, buf: []u8) []const u8 {
@@ -503,6 +528,25 @@ test "decode apple nearby action alignment" {
     const out = aw.written();
     try testing.expect(std.mem.indexOf(u8, out, "action           0x3E1A") != null);
     try testing.expect(std.mem.indexOf(u8, out, "auth tag") != null);
+}
+
+test "decode xiaomi sensor objects" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    // ctrl 0x0830: MAC + capability, unencrypted; objects: temp 23.4 °C,
+    // humidity 45.6 %, battery 87 %.
+    const data = [_]u8{
+        0x30, 0x08, 0x5B, 0x05, 0x09, 0xFD, 0x24, 0x8C, 0x38, 0xC1, 0xA4, 0x28,
+        0x04, 0x02, 0xEA, 0x00, // 0x00EA = 234 -> 23.4 °C
+        0x06, 0x02, 0xC8, 0x01, // 0x01C8 = 456 -> 45.6 %
+        0x01, 0x01, 0x57, // 87 %
+    };
+    try testing.expect(decodeXiaomi(&data, &aw.writer));
+    try aw.writer.flush();
+    const out = aw.written();
+    try testing.expect(std.mem.indexOf(u8, out, "temperature") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "humidity") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "87 %") != null);
 }
 
 test "decode eddystone tlm" {
