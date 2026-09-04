@@ -734,6 +734,7 @@ test {
     _ = @import("log.zig");
     _ = @import("filter.zig");
     _ = @import("slam.zig");
+    _ = @import("slam_stress_test.zig");
     _ = @import("tui/terminal.zig");
     _ = @import("tui/screen.zig");
     _ = @import("tui/widgets.zig");

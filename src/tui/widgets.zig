@@ -596,6 +596,17 @@ fn isGlyph(s: *Screen, x: u32, y: u32) bool {
     return (ch >= 'A' and ch <= 'Z') or (ch >= '0' and ch <= '9');
 }
 
+/// Bounds-checked cell put from float world coordinates (skips
+/// off-screen and non-finite points instead of trapping in
+/// @intFromFloat).
+fn putF(s: *Screen, x: f32, y: f32, ch: u21, st: Style) void {
+    if (!std.math.isFinite(x) or !std.math.isFinite(y)) return;
+    const wf: f32 = @floatFromInt(s.w);
+    const hf: f32 = @floatFromInt(s.h);
+    if (x < 0 or x >= wf or y < 0 or y >= hf) return;
+    s.put(@intFromFloat(x), @intFromFloat(y), ch, st);
+}
+
 /// SLAM map view: devices at solved positions, dotted observer trail,
 /// scale bar. Correct up to rotation/translation/mirror (no odometry).
 pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_idx: usize, steps: usize, now_ms: i64) void {
@@ -641,7 +652,7 @@ pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_idx: 
         while (gx <= maxx) : (gx += grid_m) {
             var gy = @floor(miny / grid_m) * grid_m;
             while (gy <= maxy) : (gy += grid_m) {
-                s.put(@intFromFloat(cx + (gx - midx) * scale), @intFromFloat(cy + (gy - midy) * scale * 0.5), gch, .{ .fg = 236 });
+                putF(s, cx + (gx - midx) * scale, cy + (gy - midy) * scale * 0.5, gch, .{ .fg = 236 });
             }
         }
     }
@@ -660,7 +671,7 @@ pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_idx: 
             var t: usize = 0;
             while (t < nsteps) : (t += 1) {
                 const f = @as(f32, @floatFromInt(t)) / @as(f32, @floatFromInt(nsteps));
-                s.put(@intFromFloat(x0 + (x1 - x0) * f), @intFromFloat(y0 + (y1 - y0) * f), if (screen_mod.ascii) '.' else '·', .{ .fg = 240 });
+                putF(s, x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, if (screen_mod.ascii) '.' else '·', .{ .fg = 240 });
             }
         }
         prev = nd;
@@ -677,8 +688,16 @@ pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_idx: 
             }
         }
         const e = e_for_node orelse continue;
-        const x: u32 = @intFromFloat(cx + (nd.x - midx) * scale);
-        const y: u32 = @intFromFloat(cy + (nd.y - midy) * scale * 0.5);
+        const x: u32 = blk: {
+            const fx = cx + (nd.x - midx) * scale;
+            if (!std.math.isFinite(fx) or fx < 0 or fx >= @as(f32, @floatFromInt(s.w))) continue;
+            break :blk @intFromFloat(fx);
+        };
+        const y: u32 = blk: {
+            const fy = cy + (nd.y - midy) * scale * 0.5;
+            if (!std.math.isFinite(fy) or fy < 0 or fy >= @as(f32, @floatFromInt(s.h))) continue;
+            break :blk @intFromFloat(fy);
+        };
         const selected = sel_idx < entries.len and entries[sel_idx].key == nd.key;
         const st: Style = if (selected)
             .{ .fg = 255, .bg = c_sel_bg, .bold = true }
@@ -698,7 +717,7 @@ pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_idx: 
         const mch: u21 = if (screen_mod.ascii)
             (if (blink_on) '@' else 'O')
         else if (blink_on) '⌖' else '◎';
-        s.put(@intFromFloat(cx + (p.x - midx) * scale), @intFromFloat(cy + (p.y - midy) * scale * 0.5), mch, .{ .fg = 255, .bold = true });
+        putF(s, cx + (p.x - midx) * scale, cy + (p.y - midy) * scale * 0.5, mch, .{ .fg = 255, .bold = true });
     }
 
     // Scale bar (nice length).
