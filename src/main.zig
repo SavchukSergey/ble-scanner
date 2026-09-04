@@ -660,7 +660,7 @@ fn runSelftest(io: std.Io, gpa: std.mem.Allocator, opts: Options) !u8 {
             var x2: u32 = 0;
             while (x2 < screen.w) : (x2 += 1) {
                 const ch = screen.back[@as(usize, y2) * screen.w + x2].ch;
-                if (ch == '⌖' or ch == '@') saw_marker = true;
+                if (ch == '⌖' or ch == '@' or ch == '◎' or ch == 'O') saw_marker = true;
             }
         }
         if (!saw_marker) {

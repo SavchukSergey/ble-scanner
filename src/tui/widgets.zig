@@ -598,7 +598,7 @@ fn isGlyph(s: *Screen, x: u32, y: u32) bool {
 
 /// SLAM map view: devices at solved positions, dotted observer trail,
 /// scale bar. Correct up to rotation/translation/mirror (no odometry).
-pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_idx: usize, steps: usize) void {
+pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_idx: usize, steps: usize, now_ms: i64) void {
     if (s.w < 40 or s.h < 14 or m.nodes.items.len == 0) {
         drawEmpty(s, if (steps == 0) "map: waiting for the first observer step…" else "terminal too small for the map view");
         return;
@@ -629,6 +629,22 @@ pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_idx: 
     const scale: f32 = @min((rmax * 2.0) / span_x, (rmax * 2.0) / span_y);
     const midx = (minx + maxx) / 2.0;
     const midy = (miny + maxy) / 2.0;
+
+    // Faint meter grid: '+' at intersections of lines every grid_m meters,
+    // aligned to whole meters — same linear units as the scale bar (unlike
+    // the radar's log rings, this carries no distance encoding).
+    {
+        var grid_m: f32 = 1.0;
+        while (grid_m * scale < 4.0 and grid_m < 64.0) grid_m *= 2.0;
+        const gch: u21 = if (screen_mod.ascii) '+' else '·';
+        var gx = @floor(minx / grid_m) * grid_m;
+        while (gx <= maxx) : (gx += grid_m) {
+            var gy = @floor(miny / grid_m) * grid_m;
+            while (gy <= maxy) : (gy += grid_m) {
+                s.put(@intFromFloat(cx + (gx - midx) * scale), @intFromFloat(cy + (gy - midy) * scale * 0.5), gch, .{ .fg = 236 });
+            }
+        }
+    }
 
     // Observer trail: dotted segments between consecutive observer nodes.
     var prev: ?slam_mod.Node = null;
@@ -675,9 +691,14 @@ pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_idx: 
         s.put(x, y, deviceGlyph(e), st);
     }
 
-    // Current observer position.
+    // Current observer position: pulses on the wall clock so the view
+    // visibly stays live (no directional sweep — azimuths are real here).
     if (prev) |p| {
-        s.put(@intFromFloat(cx + (p.x - midx) * scale), @intFromFloat(cy + (p.y - midy) * scale * 0.5), if (screen_mod.ascii) '@' else '⌖', .{ .fg = 255, .bold = true });
+        const blink_on = @mod(@divTrunc(now_ms, 600), 2) == 0;
+        const mch: u21 = if (screen_mod.ascii)
+            (if (blink_on) '@' else 'O')
+        else if (blink_on) '⌖' else '◎';
+        s.put(@intFromFloat(cx + (p.x - midx) * scale), @intFromFloat(cy + (p.y - midy) * scale * 0.5), mch, .{ .fg = 255, .bold = true });
     }
 
     // Scale bar (nice length).
