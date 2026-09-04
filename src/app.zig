@@ -537,16 +537,27 @@ pub const App = struct {
             self.put(.label, "  TX power       {d} dBm (advertised)", .{tx});
         }
 
-        // Services
+        // Services (16/32/128-bit, complete or incomplete lists alike).
         var uuids: [16]u16 = undefined;
         const nu = ad.serviceUuids16(secs, &uuids);
-        if (nu > 0 or ad.serviceData16(secs) != null) {
+        var uuids32: [4]u32 = undefined;
+        const n32 = ad.serviceUuids32(secs, &uuids32);
+        var uuids128: [2][16]u8 = undefined;
+        const n128 = ad.serviceUuids128(secs, &uuids128);
+        if (nu > 0 or n32 > 0 or n128 > 0 or ad.serviceData16(secs) != null) {
             self.put(.section, "SERVICES", .{});
             for (uuids[0..nu]) |u| {
-                self.put(.text, "  0x{X:0>4}  {s}", .{ u, services.lookup(u) orelse "?" });
+                self.put(.text, "  0x{X:0>4}  {s}", .{ u, services.lookup(u) orelse "vendor-specific" });
+            }
+            for (uuids32[0..n32]) |u| {
+                self.put(.text, "  0x{X:0>8}  vendor-specific", .{u});
+            }
+            for (uuids128[0..n128]) |u| {
+                var ub: [36]u8 = undefined;
+                self.put(.text, "  {s}  vendor-specific", .{uuid128Str(&u, &ub)});
             }
             if (ad.serviceData16(secs)) |sd| {
-                self.put(.text, "  service data on 0x{X:0>4} {s}", .{ sd.uuid, services.lookup(sd.uuid) orelse "" });
+                self.put(.text, "  service data on 0x{X:0>4} {s}", .{ sd.uuid, services.lookup(sd.uuid) orelse "vendor-specific" });
             }
         }
 
@@ -624,6 +635,16 @@ pub const App = struct {
             if (line.len == 0) continue;
             self.put(.text, "  {s}", .{line});
         }
+    }
+
+    fn uuid128Str(bytes: *const [16]u8, buf: *[36]u8) []const u8 {
+        return std.fmt.bufPrint(buf, "{s}-{s}-{s}-{s}-{s}", .{
+            std.fmt.bytesToHex(bytes[0..4].*, .lower),
+            std.fmt.bytesToHex(bytes[4..6].*, .lower),
+            std.fmt.bytesToHex(bytes[6..8].*, .lower),
+            std.fmt.bytesToHex(bytes[8..10].*, .lower),
+            std.fmt.bytesToHex(bytes[10..16].*, .lower),
+        }) catch "?";
     }
 
     fn histSpark(e: *store_mod.Entry) []const u8 {

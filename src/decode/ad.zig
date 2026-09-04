@@ -112,6 +112,37 @@ pub fn serviceUuids16(sections: []const AdSection, out: []u16) usize {
     return n;
 }
 
+/// Collect 32-bit service UUIDs from 0x04/0x05 sections (rare).
+pub fn serviceUuids32(sections: []const AdSection, out: []u32) usize {
+    var n: usize = 0;
+    for (sections) |s| {
+        if ((s.typ == 0x04 or s.typ == 0x05) and s.data.len >= 4) {
+            var i: usize = 0;
+            while (i + 4 <= s.data.len and n < out.len) : (i += 4) {
+                out[n] = std.mem.readInt(u32, s.data[i..][0..4], .little);
+                n += 1;
+            }
+        }
+    }
+    return n;
+}
+
+/// Collect 128-bit service UUIDs from 0x06/0x07 sections. Bytes are
+/// little-endian on air; returned arrays are in display (big-endian) order.
+pub fn serviceUuids128(sections: []const AdSection, out: [][16]u8) usize {
+    var n: usize = 0;
+    for (sections) |s| {
+        if ((s.typ == 0x06 or s.typ == 0x07) and s.data.len >= 16) {
+            var i: usize = 0;
+            while (i + 16 <= s.data.len and n < out.len) : (i += 16) {
+                for (0..16) |k| out[n][k] = s.data[i + 15 - k];
+                n += 1;
+            }
+        }
+    }
+    return n;
+}
+
 /// GATT Appearance value (0x19 section) if present.
 pub fn appearance(sections: []const AdSection) ?u16 {
     for (sections) |s| {
@@ -177,6 +208,25 @@ test "splitSections" {
     // truncated structure is dropped
     const trunc = [_]u8{ 0x05, 0x02, 0x01 };
     try std.testing.expectEqual(@as(usize, 0), splitSections(&trunc, &out));
+}
+
+test "service uuid collectors" {
+    // Incomplete 16-bit list (0x02) + a 128-bit list (0x07).
+    const secs = [_]AdSection{
+        .{ .typ = 0x02, .data = &.{ 0x10, 0x13 } },
+        .{ .typ = 0x07, .data = &[_]u8{
+            0x9e, 0xca, 0xdc, 0x24, 0x0e, 0xe5, 0xa9, 0xe0,
+            0x4f, 0x54, 0x55, 0x41, 0x20, 0x44, 0x59, 0x42,
+        } },
+    };
+    var u16s: [8]u16 = undefined;
+    try std.testing.expectEqual(@as(usize, 1), serviceUuids16(&secs, &u16s));
+    try std.testing.expectEqual(@as(u16, 0x1310), u16s[0]);
+
+    var u128s: [2][16]u8 = undefined;
+    try std.testing.expectEqual(@as(usize, 1), serviceUuids128(&secs, &u128s));
+    // Display order spells "BYD " at the start.
+    try std.testing.expectEqualSlices(u8, "BYD ", u128s[0][0..4]);
 }
 
 test "section extraction" {

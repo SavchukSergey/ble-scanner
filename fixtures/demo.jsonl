@@ -40,3 +40,4 @@
 {"mac":"D4:CA:6E:12:34:56","atype":1,"etype":"ConnectableUndirected","rssi":-58,"name":null,"secs":[{"t":1,"d":"06"},{"t":19,"d":"5B05"},{"t":3,"d":"95FE0F18"},{"t":22,"d":"95FE08005B052102C8478C11223304010020"}],"ts":57500}
 {"mac":"DE:AD:BE:E0:00:01","atype":0,"etype":"ConnectableUndirected","rssi":-77,"secs":[{"t":1,"d":"06"},{"t":19,"d":"0104"},{"t":255,"d":"0600010002020000B4004F00780042006F0078002000"}],"ts":56500}
 {"mac":"F0:0D:BA:11:22:33","atype":1,"etype":"ScannableUndirected","rssi":-84,"secs":[{"t":1,"d":"06"},{"t":22,"d":"AAFE20000C80000E6000000A0000003C00"}],"ts":57000}
+{"mac":"D8:61:57:8C:4F:C5","atype":1,"etype":"ConnectableUndirected","rssi":-84,"name":"BYD BLE3","secs":[{"t":1,"d":"06"},{"t":3,"d":"0F18"},{"t":6,"d":"9ECADC240EE5A9E04F54554120445942"},{"t":9,"d":"42594420424C4533"}],"ts":56500}
