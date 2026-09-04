@@ -340,13 +340,14 @@ pub fn decodeQuickShare(data: []const u8, w: *std.Io.Writer) bool {
 // --- Google Find My Device network (service data 0xFEF3) --------------------
 
 pub fn decodeFindMyDevice(data: []const u8, w: *std.Io.Writer) bool {
-    if (data.len < 8) return false;
+    if (data.len < 3) return false;
     var hex: [40]u8 = undefined;
     w.writeAll("network          Find My Device (Google)\n") catch return true;
-    w.print("ephemeral id     {s}\n", .{hexOf(data[0..@min(data.len, 16)], &hex)}) catch {};
-    if (data.len > 16) {
+    w.print("frame type       0x{X:0>2}\n", .{data[0]}) catch {};
+    w.print("ephemeral id     {s}\n", .{hexOf(data[1..@min(data.len, 17)], &hex)}) catch {};
+    if (data.len > 17) {
         var hex2: [16]u8 = undefined;
-        w.print("extra            {s} (rotating/encrypted)\n", .{hexOf(data[16..], &hex2)}) catch {};
+        w.print("extra            {s} (rotating/encrypted)\n", .{hexOf(data[17..], &hex2)}) catch {};
     }
     return true;
 }
@@ -460,6 +461,14 @@ test "decode find my device network beacon" {
     const out = aw.written();
     try testing.expect(std.mem.indexOf(u8, out, "Find My Device") != null);
     try testing.expect(std.mem.indexOf(u8, out, "ephemeral id") != null);
+
+    // Short discovery frame seen in the wild: [11][01][90][04][45 3C].
+    aw.clearRetainingCapacity();
+    const short = [_]u8{ 0x11, 0x01, 0x90, 0x04, 0x45, 0x3C };
+    try testing.expect(decodeFindMyDevice(&short, &aw.writer));
+    try aw.writer.flush();
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "frame type       0x11") != null);
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "019004453c") != null);
 }
 
 test "decode apple nearby action alignment" {
