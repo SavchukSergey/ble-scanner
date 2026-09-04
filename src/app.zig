@@ -459,7 +459,7 @@ pub const App = struct {
             widgets.drawTopBar(s, self.backend_label, self.store.count(), now_ms, self.paused, self.sort.label(), if (self.filter.active()) self.filter.rawText() else null);
             if (self.map_mode) {
                 self.slamTick(now_ms);
-                widgets.drawMap(s, &self.slam, self.ordered.items, self.sel_key, self.slam_steps);
+                widgets.drawMap(s, &self.slam, self.radar_order.items, self.radarSelIndex(), self.slam_steps);
             } else {
                 widgets.drawRadar(s, self.radar_order.items, self.radarSelIndex(), now_ms);
             }

@@ -504,26 +504,34 @@ pub fn drawRadar(s: *Screen, entries: []*Entry, sel_idx: usize, now_ms: i64) voi
         s.put(x, y, g, st);
     }
 
-    // Selected-device readout under the top bar.
-    if (entries.len > 0 and sel_idx < entries.len) {
-        const e = entries[sel_idx];
-        var nb: [17]u8 = undefined;
-        var nm: []const u8 = e.name();
-        if (nm.len == 0) nm = model.formatMac(e.addr, &nb);
-        var db: [12]u8 = undefined;
-        const dist = estDistanceMeters(e);
-        const dstr = if (dist < 10)
-            std.fmt.bufPrint(&db, "~{d:.1} m", .{dist}) catch ""
-        else
-            std.fmt.bufPrint(&db, "~{d} m", .{@as(u32, @intFromFloat(dist))}) catch "";
-        var rb: [64]u8 = undefined;
-        const line = std.fmt.bufPrint(&rb, "⏎ {s} · {s} · {d} dBm", .{ nm, dstr, e.rssiAvg() }) catch "";
-        s.textBounded(2, 1, line, @min(@as(u32, @intCast(line.len)), s.w -| 4), .{ .fg = c_accent, .bold = true });
-    }
+    // Selected-device readout + scrolling nearest panel (shared with map mode).
+    drawSelectionReadout(s, entries, sel_idx);
+    drawNearestPanel(s, entries, sel_idx);
+    drawFooter(s, "≈ distance from signal strength · no directional data");
+}
 
-    // Nearest-devices readout on wide screens; the panel scrolls to keep
-    // the selection visible, like the main list.
-    if (s.w >= 104 and entries.len > 0) {
+/// Selected-device readout line under the top bar (radar + map views).
+fn drawSelectionReadout(s: *Screen, entries: []*Entry, sel_idx: usize) void {
+    if (entries.len == 0 or sel_idx >= entries.len) return;
+    const e = entries[sel_idx];
+    var nb: [17]u8 = undefined;
+    var nm: []const u8 = e.name();
+    if (nm.len == 0) nm = model.formatMac(e.addr, &nb);
+    var db: [12]u8 = undefined;
+    const dist = estDistanceMeters(e);
+    const dstr = if (dist < 10)
+        std.fmt.bufPrint(&db, "~{d:.1} m", .{dist}) catch ""
+    else
+        std.fmt.bufPrint(&db, "~{d} m", .{@as(u32, @intFromFloat(dist))}) catch "";
+    var rb: [64]u8 = undefined;
+    const line = std.fmt.bufPrint(&rb, "⏎ {s} · {s} · {d} dBm", .{ nm, dstr, e.rssiAvg() }) catch "";
+    s.textBounded(2, 1, line, @min(@as(u32, @intCast(line.len)), s.w -| 4), .{ .fg = c_accent, .bold = true });
+}
+
+/// Scrolling nearest-devices panel (radar + map views); follows the
+/// selection like the main list.
+fn drawNearestPanel(s: *Screen, entries: []*Entry, sel_idx: usize) void {
+    if (s.w < 104 or entries.len == 0) return;
         const px: u32 = s.w - 26;
         const sorted = entries;
         std.mem.sort(*Entry, sorted, {}, struct {
@@ -572,15 +580,13 @@ pub fn drawRadar(s: *Screen, entries: []*Entry, sel_idx: usize, now_ms: i64) voi
         if (i < sorted.len) {
             s.put(px + 21, s.h - 3, if (screen_mod.ascii) 'v' else '↓', .{ .fg = c_accent });
         }
-    }
+}
 
-    // Honesty footer.
-    {
-        const msg = "≈ distance from signal strength · no directional data";
-        const mw: u32 = @intCast(msg.len);
-        if (mw + 2 < s.w) {
-            _ = s.text((s.w - mw) / 2, s.h - 2, msg, .{ .fg = c_dim });
-        }
+/// Shared honesty footer for radar/map views.
+fn drawFooter(s: *Screen, msg: []const u8) void {
+    const mw: u32 = @intCast(msg.len);
+    if (mw + 2 < s.w) {
+        _ = s.text((s.w - mw) / 2, s.h - 2, msg, .{ .fg = c_dim });
     }
 }
 
@@ -592,13 +598,13 @@ fn isGlyph(s: *Screen, x: u32, y: u32) bool {
 
 /// SLAM map view: devices at solved positions, dotted observer trail,
 /// scale bar. Correct up to rotation/translation/mirror (no odometry).
-pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_key: ?u64, steps: usize) void {
+pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_idx: usize, steps: usize) void {
     if (s.w < 40 or s.h < 14 or m.nodes.items.len == 0) {
         drawEmpty(s, if (steps == 0) "map: waiting for the first observer step…" else "terminal too small for the map view");
         return;
     }
 
-    const cx: f32 = @as(f32, @floatFromInt(s.w)) / 2.0;
+    const cx: f32 = @as(f32, @floatFromInt(s.w)) / 2.0 - (if (s.w >= 104) @as(f32, 13.0) else 0.0);
     const cy: f32 = @as(f32, @floatFromInt(s.h - 2)) / 2.0 + 0.5;
     const rmax: f32 = @min(cx - 3.0, (cy - 1.5) * 2.0);
     if (rmax < 6.0) {
@@ -657,7 +663,7 @@ pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_key: 
         const e = e_for_node orelse continue;
         const x: u32 = @intFromFloat(cx + (nd.x - midx) * scale);
         const y: u32 = @intFromFloat(cy + (nd.y - midy) * scale * 0.5);
-        const selected = sel_key != null and sel_key.? == nd.key;
+        const selected = sel_idx < entries.len and entries[sel_idx].key == nd.key;
         const st: Style = if (selected)
             .{ .fg = 255, .bg = c_sel_bg, .bold = true }
         else
@@ -690,12 +696,11 @@ pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_key: 
         _ = s.text(bar_x + bar_cols + 1, bar_y, txt, .{ .fg = c_dim });
     }
 
-    // Honesty footer.
-    const msg = "≈ range-only SLAM · walk turns to improve · map up to rotation/mirror";
-    const mw: u32 = @intCast(msg.len);
-    if (mw + 2 < s.w) {
-        _ = s.text((s.w - mw) / 2, s.h - 2, msg, .{ .fg = c_dim });
-    }
+    // Selection readout + scrolling nearest panel (shared with the rings
+    // view) and the honesty footer.
+    drawSelectionReadout(s, entries, sel_idx);
+    drawNearestPanel(s, entries, sel_idx);
+    drawFooter(s, "≈ range-only SLAM · walk turns to improve · map up to rotation/mirror");
 }
 
 pub fn drawHelpOverlay(s: *Screen) void {
