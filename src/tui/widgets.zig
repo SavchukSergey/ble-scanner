@@ -9,6 +9,7 @@ const ad = @import("../decode/ad.zig");
 const classify = @import("../decode/classify.zig");
 const companies = @import("../db/companies.zig");
 const services = @import("../db/services.zig");
+const slam_mod = @import("../slam.zig");
 
 pub const Screen = screen_mod.Screen;
 pub const Style = screen_mod.Style;
@@ -589,6 +590,114 @@ fn isGlyph(s: *Screen, x: u32, y: u32) bool {
     return (ch >= 'A' and ch <= 'Z') or (ch >= '0' and ch <= '9');
 }
 
+/// SLAM map view: devices at solved positions, dotted observer trail,
+/// scale bar. Correct up to rotation/translation/mirror (no odometry).
+pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_key: ?u64, steps: usize) void {
+    if (s.w < 40 or s.h < 14 or m.nodes.items.len == 0) {
+        drawEmpty(s, if (steps == 0) "map: waiting for the first observer step…" else "terminal too small for the map view");
+        return;
+    }
+
+    const cx: f32 = @as(f32, @floatFromInt(s.w)) / 2.0;
+    const cy: f32 = @as(f32, @floatFromInt(s.h - 2)) / 2.0 + 0.5;
+    const rmax: f32 = @min(cx - 3.0, (cy - 1.5) * 2.0);
+    if (rmax < 6.0) {
+        drawEmpty(s, "terminal too small for the map view");
+        return;
+    }
+
+    // Bounds over all nodes, in meters.
+    var minx: f32 = 1e9;
+    var miny: f32 = 1e9;
+    var maxx: f32 = -1e9;
+    var maxy: f32 = -1e9;
+    for (m.nodes.items) |nd| {
+        minx = @min(minx, nd.x);
+        maxx = @max(maxx, nd.x);
+        miny = @min(miny, nd.y);
+        maxy = @max(maxy, nd.y);
+    }
+    const span_x = @max(maxx - minx, 0.5);
+    const span_y = @max(maxy - miny, 0.5);
+    // Isotropic scale into the cell grid (cells are 2:1, halve y).
+    const scale: f32 = @min((rmax * 2.0) / span_x, (rmax * 2.0) / span_y);
+    const midx = (minx + maxx) / 2.0;
+    const midy = (miny + maxy) / 2.0;
+
+    // Observer trail: dotted segments between consecutive observer nodes.
+    var prev: ?slam_mod.Node = null;
+    for (m.nodes.items) |nd| {
+        if (nd.kind != .observer) continue;
+        if (prev) |p| {
+            const x0 = cx + (p.x - midx) * scale;
+            const y0 = cy + (p.y - midy) * scale * 0.5;
+            const x1 = cx + (nd.x - midx) * scale;
+            const y1 = cy + (nd.y - midy) * scale * 0.5;
+            const len = @max(@abs(x1 - x0), @abs((y1 - y0) * 2.0));
+            const nsteps: usize = @intFromFloat(@max(1.0, len));
+            var t: usize = 0;
+            while (t < nsteps) : (t += 1) {
+                const f = @as(f32, @floatFromInt(t)) / @as(f32, @floatFromInt(nsteps));
+                s.put(@intFromFloat(x0 + (x1 - x0) * f), @intFromFloat(y0 + (y1 - y0) * f), if (screen_mod.ascii) '.' else '·', .{ .fg = 240 });
+            }
+        }
+        prev = nd;
+    }
+
+    // Devices at solved positions.
+    for (m.nodes.items) |nd| {
+        if (nd.kind != .device) continue;
+        var e_for_node: ?*Entry = null;
+        for (entries) |e| {
+            if (e.key == nd.key) {
+                e_for_node = e;
+                break;
+            }
+        }
+        const e = e_for_node orelse continue;
+        const x: u32 = @intFromFloat(cx + (nd.x - midx) * scale);
+        const y: u32 = @intFromFloat(cy + (nd.y - midy) * scale * 0.5);
+        const selected = sel_key != null and sel_key.? == nd.key;
+        const st: Style = if (selected)
+            .{ .fg = 255, .bg = c_sel_bg, .bold = true }
+        else
+            .{ .fg = if (hasRssi(e)) rssiColor(e.rssiAvg()) else 240, .bold = true };
+        if (selected) {
+            s.put(x -| 1, y, '[', .{ .fg = c_accent, .bold = true });
+            s.put(x + 1, y, ']', .{ .fg = c_accent, .bold = true });
+        }
+        s.put(x, y, deviceGlyph(e), st);
+    }
+
+    // Current observer position.
+    if (prev) |p| {
+        s.put(@intFromFloat(cx + (p.x - midx) * scale), @intFromFloat(cy + (p.y - midy) * scale * 0.5), if (screen_mod.ascii) '@' else '⌖', .{ .fg = 255, .bold = true });
+    }
+
+    // Scale bar (nice length).
+    const nice: f32 = if (span_x > 40) 10 else if (span_x > 16) 5 else if (span_x > 6) 2 else 1;
+    const bar_cols: u32 = @intFromFloat(@max(3.0, nice * scale));
+    const bar_x: u32 = 3;
+    const bar_y = s.h - 3;
+    if (bar_x + bar_cols + 8 < s.w) {
+        var i: u32 = 0;
+        while (i < bar_cols) : (i += 1) s.put(bar_x + i, bar_y, if (screen_mod.ascii) '-' else '─', .{ .fg = 244 });
+        var lb: [16]u8 = undefined;
+        const txt = if (nice == @floor(nice))
+            std.fmt.bufPrint(&lb, " {d} m", .{@as(u32, @intFromFloat(nice))}) catch ""
+        else
+            std.fmt.bufPrint(&lb, " {d:.1} m", .{nice}) catch "";
+        _ = s.text(bar_x + bar_cols + 1, bar_y, txt, .{ .fg = c_dim });
+    }
+
+    // Honesty footer.
+    const msg = "≈ range-only SLAM · walk turns to improve · map up to rotation/mirror";
+    const mw: u32 = @intCast(msg.len);
+    if (mw + 2 < s.w) {
+        _ = s.text((s.w - mw) / 2, s.h - 2, msg, .{ .fg = c_dim });
+    }
+}
+
 pub fn drawHelpOverlay(s: *Screen) void {
     const bw: u32 = @min(46, if (s.w > 4) s.w - 4 else s.w);
     const bh: u32 = @min(16, if (s.h > 2) s.h - 2 else s.h);
@@ -609,6 +718,7 @@ pub fn drawHelpOverlay(s: *Screen) void {
         .{ "s", "cycle sort mode" },
         .{ "/", "filter: text, mac: name: company: type: rssi:-70" },
         .{ "m", "radar view (approx. distance rings, no bearing)" },
+        .{ "s (radar)", "toggle SLAM map mode · x resets it" },
         .{ "Esc", "clear the active filter" },
         .{ "c", "clear device list" },
         .{ "p", "pause / resume capture" },

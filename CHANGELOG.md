@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- SLAM map mode (`s` inside the radar view): range-only simultaneous
+  localization and mapping builds a live 2D map of device positions from
+  distance estimates gathered while walking (no odometry). Classical-MDS
+  initialization over the shortest-path distance matrix, SMACOF stress
+  majorization with robustness-weighted springs, soft motion constraints
+  between observer steps, first observer pinned as the frame anchor.
+  `x` resets the solve; map is correct up to rotation/mirror, and the
+  view says so.
+
 ## [0.1.0] - 2026-09-04
 
 Initial public release.

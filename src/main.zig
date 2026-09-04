@@ -640,6 +640,49 @@ fn runSelftest(io: std.Io, gpa: std.mem.Allocator, opts: Options) !u8 {
     }
     app.draw(&screen, now);
 
+    // Map mode: re-enter radar, 's' toggles, SLAM steps render.
+    press(&app, .char, 'm');
+    if (app.view != .radar) {
+        try errPrint(io, "selftest: m did not re-enter radar\n", .{});
+        return 1;
+    }
+    press(&app, .char, 's');
+    if (!app.map_mode) {
+        try errPrint(io, "selftest: s did not toggle map mode\n", .{});
+        return 1;
+    }
+    app.draw(&screen, now);
+    try dumpFrame(io, gpa, &screen, "frame 3f: map mode (first step)");
+    {
+        var saw_marker = false;
+        var y2: u32 = 0;
+        while (y2 < screen.h) : (y2 += 1) {
+            var x2: u32 = 0;
+            while (x2 < screen.w) : (x2 += 1) {
+                const ch = screen.back[@as(usize, y2) * screen.w + x2].ch;
+                if (ch == '⌖' or ch == '@') saw_marker = true;
+            }
+        }
+        if (!saw_marker) {
+            try errPrint(io, "selftest: map view missing observer marker\n", .{});
+            return 1;
+        }
+    }
+    // Second step after the throttle window elapses.
+    app.slam_last_step_ms = now - 5000;
+    app.draw(&screen, now + 5000);
+    try dumpFrame(io, gpa, &screen, "frame 3g: map mode (second step)");
+    if (app.slam.observerStepCount() < 2) {
+        try errPrint(io, "selftest: SLAM did not take a second step\n", .{});
+        return 1;
+    }
+    press(&app, .char, 's');
+    if (app.map_mode) {
+        try errPrint(io, "selftest: s did not toggle back to rings\n", .{});
+        return 1;
+    }
+    app.draw(&screen, now);
+
     // Help overlay.
     press(&app, .char, '?');
     app.draw(&screen, now);
@@ -690,6 +733,7 @@ test {
     _ = @import("app.zig");
     _ = @import("log.zig");
     _ = @import("filter.zig");
+    _ = @import("slam.zig");
     _ = @import("tui/terminal.zig");
     _ = @import("tui/screen.zig");
     _ = @import("tui/widgets.zig");

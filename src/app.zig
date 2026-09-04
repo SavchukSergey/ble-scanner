@@ -12,6 +12,7 @@ const appearance_db = @import("db/appearance.zig");
 const widgets = @import("tui/widgets.zig");
 const input = @import("tui/input.zig");
 const filter_mod = @import("filter.zig");
+const slam_mod = @import("slam.zig");
 
 pub const SortMode = enum(u2) {
     last_seen,
@@ -60,6 +61,12 @@ pub const App = struct {
     filter_buf: [96]u8 = @splat(0),
     filter_len: usize = 0,
 
+    /// Range-only SLAM map ('s' inside the radar view).
+    slam: slam_mod.Slam,
+    map_mode: bool = false,
+    slam_last_step_ms: i64 = 0,
+    slam_steps: usize = 0,
+
     ordered: std.ArrayList(*store_mod.Entry) = .empty,
     radar_order: std.ArrayList(*store_mod.Entry) = .empty,
     sel_key: ?u64 = null,
@@ -72,7 +79,7 @@ pub const App = struct {
     detail_txt: std.ArrayList(u8) = .empty,
 
     pub fn init(gpa: std.mem.Allocator, s: *store_mod.Store, backend: []const u8) App {
-        return .{ .gpa = gpa, .store = s, .backend_label = backend };
+        return .{ .gpa = gpa, .store = s, .backend_label = backend, .slam = slam_mod.Slam.init(gpa) };
     }
 
     pub fn deinit(self: *App) void {
@@ -80,6 +87,7 @@ pub const App = struct {
         self.radar_order.deinit(self.gpa);
         self.detail_lines.deinit(self.gpa);
         self.detail_txt.deinit(self.gpa);
+        self.slam.deinit();
     }
 
     pub fn handleAdv(self: *App, ev: *model.AdvEvent) void {
@@ -151,13 +159,21 @@ pub const App = struct {
             .enter => self.openDetail(.radar),
             .char => switch (k.ch) {
                 'm' => self.view = .list,
+                's' => {
+                    self.map_mode = !self.map_mode;
+                    if (self.map_mode) self.slam_last_step_ms = 0; // step immediately
+                },
+                'x' => {
+                    self.slam.reset();
+                    self.slam_steps = 0;
+                },
                 'j', 'k' => {
                     const down = k.ch == 'j';
                     self.moveRadarSel(down);
                 },
                 // Sorting/raw are list-only presentations; everything else
                 // behaves like the list so navigation stays uniform.
-                's', 'r' => {},
+                'r' => {},
                 else => self.handleListKey(k),
             },
             else => self.handleListKey(k),
@@ -277,6 +293,8 @@ pub const App = struct {
                 'c' => {
                     self.store.clear();
                     self.sel_key = null;
+                    self.slam.reset();
+                    self.slam_steps = 0;
                 },
                 'p' => self.paused = !self.paused,
                 'r' => self.show_raw = !self.show_raw,
@@ -290,6 +308,20 @@ pub const App = struct {
             },
             else => {},
         }
+    }
+
+    /// Feed the SLAM solver: one observer step every few seconds while
+    /// map mode is active, using current distance estimates as ranges.
+    fn slamTick(self: *App, now_ms: i64) void {
+        if (now_ms - self.slam_last_step_ms < 4000) return;
+        self.slam_last_step_ms = now_ms;
+        self.slam.beginStep();
+        for (self.ordered.items) |e| {
+            if (!widgets.hasRssi(e)) continue;
+            self.slam.observe(e.key, widgets.estDistanceMeters(e), e.count);
+        }
+        self.slam.solve(12);
+        self.slam_steps += 1;
     }
 
     fn moveSel(self: *App, down: bool) void {
@@ -425,12 +457,19 @@ pub const App = struct {
             }
         } else if (self.view == .radar) {
             widgets.drawTopBar(s, self.backend_label, self.store.count(), now_ms, self.paused, self.sort.label(), if (self.filter.active()) self.filter.rawText() else null);
-            widgets.drawRadar(s, self.radar_order.items, self.radarSelIndex(), now_ms);
+            if (self.map_mode) {
+                self.slamTick(now_ms);
+                widgets.drawMap(s, &self.slam, self.ordered.items, self.sel_key, self.slam_steps);
+            } else {
+                widgets.drawRadar(s, self.radar_order.items, self.radarSelIndex(), now_ms);
+            }
             if (self.ordered.items.len == 0) {
                 widgets.drawEmpty(s, if (self.store.count() == 0) "listening for BLE advertisements…" else "no devices match the filter");
             }
             if (self.filter_edit) {
                 widgets.drawFilterInput(s, self.filter_buf[0..self.filter_len]);
+            } else if (self.view == .radar and self.map_mode) {
+                widgets.drawHints(s, "↑↓ select · ⏎ details · s rings · x reset map · m list · ? help · q quit");
             } else {
                 widgets.drawHints(s, widgets.Hints.radar);
             }
