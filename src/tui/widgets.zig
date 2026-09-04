@@ -596,14 +596,14 @@ fn isGlyph(s: *Screen, x: u32, y: u32) bool {
     return (ch >= 'A' and ch <= 'Z') or (ch >= '0' and ch <= '9');
 }
 
-/// Bounds-checked cell put from float world coordinates (skips
-/// off-screen and non-finite points instead of trapping in
-/// @intFromFloat).
+/// Bounds-checked cell put from float world coordinates, clipped to the
+/// map's drawable rows (between the readout and the footer).
 fn putF(s: *Screen, x: f32, y: f32, ch: u21, st: Style) void {
     if (!std.math.isFinite(x) or !std.math.isFinite(y)) return;
     const wf: f32 = @floatFromInt(s.w);
-    const hf: f32 = @floatFromInt(s.h);
-    if (x < 0 or x >= wf or y < 0 or y >= hf) return;
+    const y_min: f32 = 2; // below top bar + selection readout
+    const y_max: f32 = @as(f32, @floatFromInt(s.h)) - 2; // above footer + hints
+    if (x < 0 or x >= wf or y < y_min or y >= y_max) return;
     s.put(@intFromFloat(x), @intFromFloat(y), ch, st);
 }
 
@@ -712,7 +712,7 @@ pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_idx: 
         };
         const y: u32 = blk: {
             const fy = cy + (nd.y - midy) * scale * 0.5;
-            if (!std.math.isFinite(fy) or fy < 0 or fy >= @as(f32, @floatFromInt(s.h))) continue;
+            if (!std.math.isFinite(fy) or fy < 2 or fy >= @as(f32, @floatFromInt(s.h)) - 2) continue;
             break :blk @intFromFloat(fy);
         };
         const selected = sel_idx < entries.len and entries[sel_idx].key == nd.key;
