@@ -609,7 +609,7 @@ fn putF(s: *Screen, x: f32, y: f32, ch: u21, st: Style) void {
 
 /// SLAM map view: devices at solved positions, dotted observer trail,
 /// scale bar. Correct up to rotation/translation/mirror (no odometry).
-pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_idx: usize, steps: usize, now_ms: i64) void {
+pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_idx: usize, steps: usize, now_ms: i64, observer_centered: bool) void {
     if (s.w < 40 or s.h < 14 or m.nodes.items.len == 0) {
         drawEmpty(s, if (steps == 0) "map: waiting for the first observer step…" else "terminal too small for the map view");
         return;
@@ -636,10 +636,27 @@ pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_idx: 
     }
     const span_x = @max(maxx - minx, 0.5);
     const span_y = @max(maxy - miny, 0.5);
-    // Isotropic scale into the cell grid (cells are 2:1, halve y).
-    const scale: f32 = @min((rmax * 2.0) / span_x, (rmax * 2.0) / span_y);
-    const midx = (minx + maxx) / 2.0;
-    const midy = (miny + maxy) / 2.0;
+    // Camera: fit-to-content midpoint (default), or the current observer
+    // position in you-centered mode (GPS-style; far discoveries may leave
+    // the viewport instead of rescaling the view).
+    var midx = (minx + maxx) / 2.0;
+    var midy = (miny + maxy) / 2.0;
+    var scale: f32 = @min((rmax * 2.0) / span_x, (rmax * 2.0) / span_y);
+    if (observer_centered) {
+        // Camera on the latest observer node; scale from a fixed reference
+        // span (the smaller of the fitted span and ~30 m) so zoom doesn't
+        // breathe with discovery while walking.
+        var last_obs: ?slam_mod.Node = null;
+        for (m.nodes.items) |nd| {
+            if (nd.kind == .observer) last_obs = nd;
+        }
+        if (last_obs) |o| {
+            midx = o.x;
+            midy = o.y;
+            const ref_span = @max(6.0, @min(@max(span_x, span_y), 30.0));
+            scale = rmax * 2.0 / ref_span;
+        }
+    }
 
     // Faint meter grid: '+' at intersections of lines every grid_m meters,
     // aligned to whole meters — same linear units as the scale bar (unlike
@@ -740,7 +757,10 @@ pub fn drawMap(s: *Screen, m: *const slam_mod.Slam, entries: []*Entry, sel_idx: 
     // view) and the honesty footer.
     drawSelectionReadout(s, entries, sel_idx);
     drawNearestPanel(s, entries, sel_idx);
-    drawFooter(s, "≈ range-only SLAM · walk turns to improve · map up to rotation/mirror");
+    drawFooter(s, if (observer_centered)
+        "≈ range-only SLAM · you-centered camera (z: fit view) · up to rotation/mirror"
+    else
+        "≈ range-only SLAM · walk turns to improve · map up to rotation/mirror");
 }
 
 pub fn drawHelpOverlay(s: *Screen) void {

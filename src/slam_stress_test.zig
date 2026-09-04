@@ -48,6 +48,7 @@ test "slam stress: pruning, late devices, render sizes" {
     for (sizes) |sz| {
         var scr = try screen_mod.Screen.init(gpa, sz[0], sz[1]);
         defer scr.deinit();
-        widgets.drawMap(&scr, &s, order.items, 0, 60, 123456);
+        widgets.drawMap(&scr, &s, order.items, 0, 60, 123456, false);
+        widgets.drawMap(&scr, &s, order.items, 0, 60, 123456, true);
     }
 }

@@ -64,6 +64,7 @@ pub const App = struct {
     /// Range-only SLAM map ('s' inside the radar view).
     slam: slam_mod.Slam,
     map_mode: bool = false,
+    observer_centered: bool = false,
     slam_last_step_ms: i64 = 0,
     slam_steps: usize = 0,
 
@@ -190,6 +191,7 @@ pub const App = struct {
                     self.slam.reset();
                     self.slam_steps = 0;
                 },
+                'z' => self.observer_centered = !self.observer_centered,
                 'j', 'k' => {
                     const down = k.ch == 'j';
                     self.moveRadarSel(down);
@@ -482,7 +484,7 @@ pub const App = struct {
             widgets.drawTopBar(s, self.backend_label, self.store.count(), now_ms, self.paused, self.sort.label(), if (self.filter.active()) self.filter.rawText() else null);
             if (self.map_mode) {
                 self.slamTick(now_ms);
-                widgets.drawMap(s, &self.slam, self.radar_order.items, self.radarSelIndex(), self.slam_steps, now_ms);
+                widgets.drawMap(s, &self.slam, self.radar_order.items, self.radarSelIndex(), self.slam_steps, now_ms, self.observer_centered);
             } else {
                 widgets.drawRadar(s, self.radar_order.items, self.radarSelIndex(), now_ms);
             }
@@ -492,7 +494,7 @@ pub const App = struct {
             if (self.filter_edit) {
                 widgets.drawFilterInput(s, self.filter_buf[0..self.filter_len]);
             } else if (self.view == .radar and self.map_mode) {
-                widgets.drawHints(s, "↑↓ select · ⏎ details · s rings · x reset map · m view · ? help · q quit");
+                widgets.drawHints(s, "↑↓ select · ⏎ details · s rings · z camera · x reset map · m view · ? help · q quit");
             } else {
                 widgets.drawHints(s, widgets.Hints.radar);
             }
