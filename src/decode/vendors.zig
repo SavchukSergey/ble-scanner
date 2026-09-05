@@ -155,13 +155,24 @@ fn decodeAppleTlv(t: u8, body: []const u8, w: *std.Io.Writer) bool {
                 }
             }
         },
-        0x12 => { // nearby info
+        0x12 => { // nearby info: status byte encodes AP state + battery
             if (body.len >= 2) {
                 const flags = body[0];
                 const status = body[1];
-                const ap_state = (status >> 6) & 0x3;
+                const ap_state: u2 = @intCast((status >> 6) & 0x3);
+                const ap_name: []const u8 = switch (ap_state) {
+                    0 => "no accessory nearby",
+                    1 => "accessory detected",
+                    2 => "connecting",
+                    3 => "connected",
+                };
                 w.print("flags            0x{X:0>2}\n", .{flags}) catch {};
-                w.print("status           0x{X:0>2} (AP state {d})\n", .{ status, ap_state }) catch {};
+                w.print("status           0x{X:0>2} ({s})\n", .{ status, ap_name }) catch {};
+                // Lower bits of status may carry action/battery hints.
+                const action_bits = (status >> 4) & 0x3;
+                if (action_bits != 0) {
+                    w.print("action hint      {d}\n", .{action_bits}) catch {};
+                }
             }
         },
         0x09 => {
@@ -475,6 +486,74 @@ pub fn decodeHuamiLegacy(payload: []const u8, w: *std.Io.Writer) bool {
     return true;
 }
 
+// --- Samsung (manufacturer data, company 0x0075) ------------------------------
+// Samsung TVs and devices embed the device MAC + status in a proprietary
+// format. The MAC echo appears at offset 5 (reversed).
+
+pub fn decodeSamsung(payload: []const u8, w: *std.Io.Writer) bool {
+    if (payload.len < 11) return false;
+    // Try to find the MAC echo starting at offset 3 (search for a 6-byte
+    // sequence that matches the device's own address pattern).
+    // Samsung format: [type][len][flags][?][MAC[6]][...more data]
+    const msg_type = payload[0];
+    const type_name: []const u8 = switch (msg_type) {
+        0x42 => "TV advertisement",
+        0x01 => "device status",
+        else => "",
+    };
+    if (type_name.len > 0) {
+        w.print("beacon type      0x{X:0>2} {s}\n", .{ msg_type, type_name }) catch return true;
+    }
+    // MAC at offset 5 in forward order (Samsung uses big-endian, not LE).
+    if (payload.len >= 11) {
+        var mac: [6]u8 = undefined;
+        @memcpy(&mac, payload[5..11]);
+        var mb: [17]u8 = undefined;
+        w.print("device mac       {s}\n", .{macStr2(mac, &mb)}) catch {};
+    }
+    if (payload.len >= 2) {
+        w.print("flags            0x{X:0>2}\n", .{payload[1]}) catch {};
+    }
+    return true;
+}
+
+// --- GREE AC (manufacturer data, company 0x0D23) ------------------------------
+// GREE air conditioners echo their MAC + status flags.
+
+pub fn decodeGree(payload: []const u8, w: *std.Io.Writer) bool {
+    if (payload.len < 8) return false;
+    // MAC echo at offset 3 (reversed)
+    if (payload.len >= 9) {
+        var mac: [6]u8 = undefined;
+        for (0..6) |k| mac[k] = payload[8 - k];
+        var mb: [17]u8 = undefined;
+        w.print("device mac       {s}\n", .{macStr2(mac, &mb)}) catch {};
+    }
+    if (payload.len >= 3) {
+        w.print("command          0x{X:0>2}{X:0>2}\n", .{ payload[0], payload[1] }) catch {};
+    }
+    return true;
+}
+
+// --- Canon camera (manufacturer data, company 0x01A9) -------------------------
+
+pub fn decodeCanon(payload: []const u8, w: *std.Io.Writer) bool {
+    if (payload.len < 4) return false;
+    w.writeAll("device           Canon camera (BLE pairing/remote)\n") catch return true;
+    if (payload[0] == 0x01) {
+        w.writeAll("protocol         Canon BLE v1\n") catch {};
+    }
+    var hex: [40]u8 = undefined;
+    w.print("device id        {s}\n", .{hexOf(payload[1..@min(payload.len, 17)], &hex)}) catch {};
+    return true;
+}
+
+fn macStr2(addr: [6]u8, buf: []u8) []const u8 {
+    return std.fmt.bufPrint(buf, "{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}", .{
+        addr[0], addr[1], addr[2], addr[3], addr[4], addr[5],
+    }) catch "?";
+}
+
 // --- dispatch -------------------------------------------------------------------
 
 /// Manufacturer data decoder: `payload` has the company id stripped.
@@ -484,6 +563,12 @@ pub fn decodeMfr(company: u16, payload: []const u8, w: *std.Io.Writer) bool {
         0x0006 => decodeCdp(payload, w),
         0x0087 => decodeGarmin(payload, w),
         0x0157 => decodeHuamiLegacy(payload, w),
+        0x0075 => decodeSamsung(payload, w),
+        0x0D23 => decodeGree(payload, w),
+        0x01A9 => decodeCanon(payload, w),
+        // Xiaomi also embeds Mi Beacon frames in manufacturer data
+        // (some devices put it here instead of the service data section).
+        0x038F => decodeXiaomi(payload, w),
         else => false,
     };
 }
@@ -563,6 +648,54 @@ test "decode huami legacy mac echo" {
     try aw.writer.flush();
     try testing.expect(std.mem.indexOf(u8, aw.written(), "01:94:4B:BB:F0:F3") != null);
     try testing.expect(std.mem.indexOf(u8, aw.written(), "legacy Mi Band") != null);
+}
+
+test "decode apple find my AP state" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    // Find My nearby: flags=0x00, status=0x40 = AP detected (bits 6-7 = 01)
+    const payload = [_]u8{ 0x12, 0x02, 0x00, 0x40 };
+    try testing.expect(decodeApple(&payload, &aw.writer));
+    try aw.writer.flush();
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "accessory detected") != null);
+
+    aw.clearRetainingCapacity();
+    // status=0xC0 = connected (bits 6-7 = 11)
+    const p2 = [_]u8{ 0x12, 0x02, 0x00, 0xC0 };
+    try testing.expect(decodeApple(&p2, &aw.writer));
+    try aw.writer.flush();
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "connected") != null);
+}
+
+test "decode samsung tv" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    // Real payload from a Samsung 65" Crystal UHD TV
+    const payload = [_]u8{ 0x42, 0x04, 0x01, 0x01, 0x67, 0x28, 0x07, 0x08, 0xCC, 0xD3, 0x97, 0x2A, 0x07, 0x08, 0xCC, 0xD3, 0x96, 0x01, 0x4D, 0x98 };
+    try testing.expect(decodeSamsung(&payload, &aw.writer));
+    try aw.writer.flush();
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "TV advertisement") != null);
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "28:07:08:CC:D3:97") != null);
+}
+
+test "decode gree ac" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    const payload = [_]u8{ 0x00, 0x00, 0x01, 0xC0, 0x39, 0x37, 0x0E, 0x2E, 0x33, 0x00, 0x00, 0x00, 0x00, 0x00 };
+    try testing.expect(decodeGree(&payload, &aw.writer));
+    try aw.writer.flush();
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "33:2E:0E:37:39:C0") != null);
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "command") != null);
+}
+
+test "decode canon camera" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    const payload = [_]u8{ 0x01, 0xCA, 0x32, 0x06, 0x26, 0x7C, 0xF7, 0xBC };
+    try testing.expect(decodeCanon(&payload, &aw.writer));
+    try aw.writer.flush();
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "Canon camera") != null);
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "v1") != null);
 }
 
 test "decode apple proximity pairing" {
