@@ -216,18 +216,37 @@ pub fn decodeCdp(payload: []const u8, w: *std.Io.Writer) bool {
         };
         w.print("device type      0x{X:0>2} ({s})\n", .{ dev_type, type_name }) catch {};
     }
-    // Swift Pair names ride at the end as UTF-16LE.
+    // Swift Pair names ride at the end as UTF-16LE — but only for actual
+    // Swift Pair frames. Verified against every distinct real capture of
+    // company 0x0006 in captures/*.jsonl (603 events, 8 unique payloads):
+    // every single one has scenario byte 0x01 with a HIGH-ENTROPY tail
+    // (not text at all) — some other, much more common CDP scenario also
+    // uses 0x01 here, or this device's "device name" bytes are actually
+    // an opaque/rotating identifier. Printing "name" unconditionally used
+    // to emit a blank (or occasionally garbled, one stray printable byte
+    // among the noise) line on 100% of real-world traffic seen. Now we
+    // require the WHOLE decoded run to be printable, no exceptions — a
+    // real device name never contains a non-printable code unit, so one
+    // garbage char means this isn't a name and we say nothing rather than
+    // mislead.
     if (scenario == 0x01 and payload.len > 8) {
         const name_part = payload[8..];
-        if (name_part.len >= 2) {
-            w.writeAll("name             ") catch return true;
-            var i: usize = 0;
-            while (i + 1 < name_part.len) : (i += 2) {
-                const c = std.mem.readInt(u16, name_part[i..][0..2], .little);
-                if (c == 0) break;
-                if (c >= 0x20 and c < 0x7F) w.writeByte(@intCast(c)) catch break;
+        var buf: [64]u8 = undefined;
+        var n: usize = 0;
+        var looks_like_text = name_part.len >= 2;
+        var i: usize = 0;
+        while (looks_like_text and i + 1 < name_part.len) : (i += 2) {
+            const c = std.mem.readInt(u16, name_part[i..][0..2], .little);
+            if (c == 0) break;
+            if (c < 0x20 or c >= 0x7F or n >= buf.len) {
+                looks_like_text = false;
+                break;
             }
-            w.writeByte('\n') catch {};
+            buf[n] = @intCast(c);
+            n += 1;
+        }
+        if (looks_like_text and n > 0) {
+            w.print("name             {s}\n", .{buf[0..n]}) catch {};
         }
     }
     return true;
@@ -719,6 +738,19 @@ test "decode microsoft cdp swift pair" {
     try testing.expect(std.mem.indexOf(u8, out, "Swift Pair") != null);
     try testing.expect(std.mem.indexOf(u8, out, "keyboard") != null);
     try testing.expect(std.mem.indexOf(u8, out, "XBox") != null);
+}
+
+test "decode microsoft cdp does not print a garbage name for opaque tails" {
+    // Real capture from captures/*.jsonl (company 0x0006, scenario 0x01):
+    // every single real sample seen has a high-entropy tail, not a UTF-16
+    // name. Regression test for a bug where this unconditionally printed
+    // an empty (or occasionally partially-garbled) "name" line.
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    const payload = [_]u8{ 0x01, 0x09, 0x20, 0x02, 0x4e, 0x19, 0x32, 0x58, 0x7b, 0x58, 0xe2, 0x4a, 0x61, 0xcf, 0x29, 0x4c, 0xf8, 0x3b, 0xa7, 0x75, 0x9d, 0xfd, 0x32, 0x97, 0x50, 0x94, 0xff };
+    try testing.expect(decodeCdp(&payload, &aw.writer));
+    try aw.writer.flush();
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "name") == null);
 }
 
 test "decode xiaomi frame" {
