@@ -90,8 +90,8 @@ fn decodeAppleTlv(t: u8, body: []const u8, w: *std.Io.Writer) bool {
     w.print("continuity type  0x{X:0>2} ({s})\n", .{ t, name }) catch return true;
 
     switch (t) {
-        0x07 => { // proximity pairing
-            if (body.len < 1) return true;
+        0x07 => { // proximity pairing: [device|flags][earbits][pairing code?][battery?]
+            if (body.len < 2) return true;
             const dev = body[0] >> 4;
             const flags = body[0] & 0x0F;
             w.print("device           {s} (0x{X})\n", .{ airpodsModel(dev), dev }) catch {};
@@ -102,6 +102,20 @@ fn decodeAppleTlv(t: u8, body: []const u8, w: *std.Io.Writer) bool {
                 if (earbits & 0x20 != 0) parts = if (parts.len > 0) "both in ear" else "right in ear";
                 if (earbits & 0x40 != 0) parts = if (parts.len > 0) parts else "in case";
                 w.print("state            0x{X:0>2} {s}\n", .{ earbits, parts }) catch {};
+                // Battery levels: upper nibbles of earbits (left) and body[2] (right, case).
+                // Layout: [device|flags][left|ear][right|case_battery][code?...]
+                if (body.len >= 3) {
+                    const batt_left = (earbits >> 4) & 0x0F;
+                    const b2 = body[2];
+                    const batt_right = b2 >> 4;
+                    const batt_case = (b2 >> 0) & 0x0F;
+                    if (batt_left > 0 and batt_left <= 10)
+                        w.print("battery left     {d} %\n", .{batt_left * 10}) catch {};
+                    if (batt_right > 0 and batt_right <= 10)
+                        w.print("battery right    {d} %\n", .{batt_right * 10}) catch {};
+                    if (batt_case > 0 and batt_case <= 10)
+                        w.print("battery case     {d} %\n", .{batt_case * 10}) catch {};
+                }
                 // one-time pairing code when flag bit 0x1 set
                 if (flags & 0x1 != 0 and body.len >= 5) {
                     w.print("pairing code     {X:0>2}{X:0>2}{X:0>2}\n", .{ body[2], body[3], body[4] }) catch {};
@@ -116,7 +130,22 @@ fn decodeAppleTlv(t: u8, body: []const u8, w: *std.Io.Writer) bool {
                     0x0119 => "AirPods setup nearby",
                     0x011A => "Apple TV setup nearby",
                     0x1A18 => "auto-connect",
+                    0x1A19 => "auto-connect (alternate)",
+                    0x1A1A => "verify nearby",
+                    0x3018 => "Apple TV connected",
+                    0x3019 => "Apple TV remote pairing",
                     0x301A => "Apple TV / HomePod nearby",
+                    0x301B => "Apple TV app launch",
+                    0x301C => "Apple TV screensaver",
+                    0x3118 => "HomePod nearby",
+                    0x3119 => "HomePod setup",
+                    0x3219 => "Watch setup nearby",
+                    0x321A => "Watch auto-connect",
+                    0x3618 => "iPhone setup nearby",
+                    0x3619 => "iPhone migration",
+                    0x3E1A => "proximity action",
+                    0x7118 => "AirPlay nearby",
+                    0x7218 => "AirDrop nearby",
                     else => "",
                 };
                 w.print("action           0x{X:0>4} {s}\n", .{ action, action_name }) catch {};
@@ -134,6 +163,13 @@ fn decodeAppleTlv(t: u8, body: []const u8, w: *std.Io.Writer) bool {
                 w.print("flags            0x{X:0>2}\n", .{flags}) catch {};
                 w.print("status           0x{X:0>2} (AP state {d})\n", .{ status, ap_state }) catch {};
             }
+        },
+        0x09 => {
+            if (body.len >= 8) {
+                var hex: [24]u8 = undefined;
+                w.print("device hash      {s}\n", .{hexOf(body[0..8], &hex)}) catch {};
+            }
+            w.writeAll("trigger          Siri voice activation\n") catch {};
         },
         else => {},
     }
@@ -387,6 +423,58 @@ pub fn decodeFindMyDevice(data: []const u8, w: *std.Io.Writer) bool {
     return true;
 }
 
+// --- Garmin (manufacturer data, company 0x0087) -------------------------------
+
+pub fn decodeGarmin(payload: []const u8, w: *std.Io.Writer) bool {
+    if (payload.len < 2) return false;
+    const msg_type = payload[0];
+    const subtype = payload[1];
+    const type_name: []const u8 = switch (msg_type) {
+        0x0C => "wearable activity beacon",
+        0x0D => "device status",
+        else => "",
+    };
+    w.print("beacon type      0x{X:0>2} {s}\n", .{ msg_type, type_name }) catch return true;
+    const sub_name: []const u8 = switch (subtype) {
+        0x05 => "active / connected",
+        0x04 => "idle",
+        else => "",
+    };
+    w.print("device state     0x{X:0>2} {s}\n", .{ subtype, sub_name }) catch {};
+    return true;
+}
+
+// --- Apple HeySiri (Continuity subtype 0x09, inside 0xFF section) --------------
+// Payload after the type/len: audio trigger metadata + device hash.
+
+fn decodeHeySiri(body: []const u8, w: *std.Io.Writer) bool {
+    if (body.len < 8) return true; // too short to say anything useful
+    var hex: [24]u8 = undefined;
+    w.print("device hash      {s}\n", .{hexOf(body[0..8], &hex)}) catch {};
+    w.writeAll("trigger          Siri voice activation\n") catch {};
+    return true;
+}
+
+// --- Huami/Amazfit legacy format (manufacturer data, company 0x0157) -----------
+// Legacy Mi Band beacon: 02 + 16 bytes (usually FF padding + MAC echo).
+
+pub fn decodeHuamiLegacy(payload: []const u8, w: *std.Io.Writer) bool {
+    if (payload.len < 8) return false;
+    if (payload[0] != 0x02) return false;
+    // Last 6 bytes of the payload are the device MAC (little-endian)
+    if (payload.len >= 8) {
+        var mac: [6]u8 = undefined;
+        for (0..6) |k| mac[k] = payload[payload.len - 1 - k];
+        var mb: [17]u8 = undefined;
+        const mac_str = std.fmt.bufPrint(&mb, "{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}", .{
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+        }) catch "?";
+        w.print("source mac       {s}\n", .{mac_str}) catch {};
+    }
+    w.writeAll("format           legacy Mi Band beacon\n") catch {};
+    return true;
+}
+
 // --- dispatch -------------------------------------------------------------------
 
 /// Manufacturer data decoder: `payload` has the company id stripped.
@@ -394,6 +482,8 @@ pub fn decodeMfr(company: u16, payload: []const u8, w: *std.Io.Writer) bool {
     return switch (company) {
         0x004C => decodeApple(payload, w),
         0x0006 => decodeCdp(payload, w),
+        0x0087 => decodeGarmin(payload, w),
+        0x0157 => decodeHuamiLegacy(payload, w),
         else => false,
     };
 }
@@ -424,6 +514,56 @@ fn hexOf(data: []const u8, buf: []u8) []const u8 {
 // --- tests ----------------------------------------------------------------------
 
 const testing = std.testing;
+
+test "decode apple airpods battery" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    // Proximity pairing TLV: type=0x07, len=3, body=[device|flags][earbits][batt]
+    // device=0(AirPods1), flags=2, earbits=0x47(right+case), batt: left=4(40%), right=10(100%), case=7(70%)
+    const payload = [_]u8{ 0x07, 0x03, 0x02, 0x47, 0xA7 };
+    try testing.expect(decodeApple(&payload, &aw.writer));
+    try aw.writer.flush();
+    const out = aw.written();
+    try testing.expect(std.mem.indexOf(u8, out, "battery left     40 %") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "battery right    100 %") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "battery case     70 %") != null);
+}
+
+test "decode apple nearby action names" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    const payload = [_]u8{ 0x10, 0x04, 0x30, 0x1A, 0x13, 0xF8 };
+    try testing.expect(decodeApple(&payload, &aw.writer));
+    try aw.writer.flush();
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "Apple TV / HomePod nearby") != null);
+
+    aw.clearRetainingCapacity();
+    const p2 = [_]u8{ 0x10, 0x04, 0x36, 0x18, 0xAB, 0xCD };
+    try testing.expect(decodeApple(&p2, &aw.writer));
+    try aw.writer.flush();
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "iPhone setup nearby") != null);
+}
+
+test "decode garmin beacon" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    try testing.expect(decodeGarmin(&.{ 0x0C, 0x05 }, &aw.writer));
+    try aw.writer.flush();
+    const out = aw.written();
+    try testing.expect(std.mem.indexOf(u8, out, "wearable activity beacon") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "active / connected") != null);
+}
+
+test "decode huami legacy mac echo" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    // 02 + 16 bytes (FF×10 + MAC LE: F3 F0 BB 4B 94 01)
+    const payload = [_]u8{0x02} ++ ([_]u8{0xFF} ** 10) ++ [_]u8{ 0xF3, 0xF0, 0xBB, 0x4B, 0x94, 0x01 };
+    try testing.expect(decodeHuamiLegacy(&payload, &aw.writer));
+    try aw.writer.flush();
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "01:94:4B:BB:F0:F3") != null);
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "legacy Mi Band") != null);
+}
 
 test "decode apple proximity pairing" {
     var aw: std.Io.Writer.Allocating = .init(testing.allocator);
