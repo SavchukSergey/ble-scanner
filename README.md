@@ -82,8 +82,8 @@ material for new device-type decoders.
 
 ### Keys
 
-`↑↓/jk` select · `⏎` details · `/` filter · `m` radar · `r` raw hex view · `s`
-sort · `c` clear · `p` pause · `?` help · `q` quit. Detail view: `↑↓/jk` scroll,
+`↑↓/jk` select · `⏎` details · `/` filter · `t` group by type · `m` radar · `r`
+raw hex view · `s` sort · `c` clear · `p` pause · `?` help · `q` quit. Detail view: `↑↓/jk` scroll,
 `PgUp/PgDn`, `g/G`, `Esc` back. `Esc` in the list clears the active filter.
 
 The radar view (`m`) plots devices on log-scale distance rings estimated from

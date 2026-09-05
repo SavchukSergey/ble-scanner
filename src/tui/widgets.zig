@@ -205,7 +205,7 @@ pub fn drawTopBar(s: *Screen, backend: []const u8, n_dev: usize, now_ms: i64, pa
 }
 
 pub const Hints = struct {
-    pub const list = "↑↓ select · ⏎ details · m view · / filter · r raw · s sort · c clear · p pause · ? help · q quit";
+    pub const list = "↑↓ select · ⏎ details · m view · / filter · t group · r raw · s sort · c clear · p pause · ? help · q quit";
     pub const radar = "↑↓ select · ⏎ details · m view · / filter · p pause · ? help · q quit";
     pub const detail = "↑↓ scroll · PgUp/PgDn page · Esc back · ? help · q quit";
 };
@@ -297,10 +297,20 @@ fn computeColumns(w: u32) Columns {
     return c;
 }
 
-pub fn drawListBody(s: *Screen, entries: []*Entry, sel_idx: usize, top: usize, now_ms: i64, raw: bool) void {
+pub fn drawListBody(s: *Screen, entries: []*Entry, kinds: ?[]const u8, sel_idx: usize, top: usize, now_ms: i64, raw: bool, grouped: bool) void {
     const vy0: u32 = 2;
     const vh: u32 = if (s.h > 3) s.h - 3 else 0;
-    const need_scroll = entries.len > vh and vh > 1;
+    // When grouped, count the header rows so the scrollbar reflects the
+    // true row count.
+    var n_headers: usize = 0;
+    if (grouped and kinds != null and kinds.?.len == entries.len and entries.len > 0) {
+        n_headers = 1;
+        for (kinds.?[1..], 0..) |k, i| {
+            if (k != kinds.?[i]) n_headers += 1;
+        }
+    }
+    const total_rows = entries.len + n_headers;
+    const need_scroll = total_rows > vh and vh > 1;
     // Reserve a gap column + the scrollbar track on the right.
     const w_eff: u32 = if (need_scroll and s.w > 10) s.w - 2 else s.w;
     const c = computeColumns(w_eff);
@@ -325,12 +335,27 @@ pub fn drawListBody(s: *Screen, entries: []*Entry, sel_idx: usize, top: usize, n
 
     if (vh == 0) return;
 
+    const has_kinds = grouped and kinds != null and kinds.?.len == entries.len;
     var i: usize = top;
     var row: u32 = 0;
+    var prev_kind: u8 = 0xFF;
     while (i < entries.len and row < vh) : ({
         i += 1;
         row += 1;
     }) {
+        // Group header row (drawn when this device starts a new group).
+        if (has_kinds) {
+            const k = kinds.?[i];
+            if (k != prev_kind) {
+                var gcount: usize = 0;
+                var j = i;
+                while (j < entries.len and kinds.?[j] == k) : (j += 1) gcount += 1;
+                drawGroupHeader(s, vy0 + row, w_eff, k, gcount);
+                prev_kind = k;
+                row += 1;
+                if (row >= vh) break;
+            }
+        }
         const e = entries[i];
         const y = vy0 + row;
         const selected = (i == sel_idx);
@@ -395,7 +420,22 @@ pub fn drawListBody(s: *Screen, entries: []*Entry, sel_idx: usize, top: usize, n
         }
     }
 
-    if (need_scroll) drawScrollbar(s, vy0, vh, top, entries.len);
+    if (need_scroll) drawScrollbar(s, vy0, vh, top, total_rows);
+}
+
+/// One group header line: `── watch (3) ───────` spanning the list width.
+fn drawGroupHeader(s: *Screen, y: u32, w: u32, kind_u8: u8, count: usize) void {
+    const kind: classify.Kind = @enumFromInt(kind_u8);
+    var buf: [48]u8 = undefined;
+    const label = std.fmt.bufPrint(&buf, "{s} ({d})", .{ kind.label(), count }) catch kind.label();
+    const dash: u21 = if (screen_mod.ascii) '-' else '─';
+    const hl: Style = .{ .fg = c_accent, .bold = true };
+    putF(s, 1, @floatFromInt(y), dash, .{ .fg = c_dim });
+    putF(s, 2, @floatFromInt(y), dash, .{ .fg = c_dim });
+    _ = s.text(4, y, label, hl);
+    var fx: u32 = 4 + @as(u32, @intCast(label.len)) + 1;
+    const x_end = if (w > 1) w - 1 else w;
+    while (fx < x_end) : (fx += 1) putF(s, @floatFromInt(fx), @floatFromInt(y), dash, .{ .fg = c_dim });
 }
 
 /// Right-edge scrollbar: dim track, accent thumb sized/positioned
@@ -893,6 +933,7 @@ pub fn drawHelpOverlay(s: *Screen) void {
         .{ "Enter", "open device details" },
         .{ "Esc", "back to device list" },
         .{ "s", "cycle sort mode" },
+        .{ "t", "group devices by type" },
         .{ "/", "filter: text, mac: name: company: type: rssi:-70" },
         .{ "m", "cycle view: list · radar rings · SLAM map" },
         .{ "s (radar/map)", "toggle rings ↔ SLAM map · x resets the solve" },

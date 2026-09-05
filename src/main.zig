@@ -525,6 +525,32 @@ fn runSelftest(io: std.Io, gpa: std.mem.Allocator, opts: Options) !u8 {
         }
     }
 
+    // Grouped view: 't' must render type headers without breaking selection.
+    {
+        press(&app, .char, 't');
+        app.draw(&screen, now);
+        try dumpFrame(io, gpa, &screen, "frame 1c: grouped by type");
+        // At least one header row (─ + label) must be present.
+        var saw_header = false;
+        var yy: u32 = 2;
+        outer: while (yy < opts.height - 1) : (yy += 1) {
+            var xx: u32 = 1;
+            while (xx < @min(8, screen.w)) : (xx += 1) {
+                const cell = screen.back[@as(usize, yy) * screen.w + xx];
+                if (cell.ch == '─' or cell.ch == '-') {
+                    saw_header = true;
+                    break :outer;
+                }
+            }
+        }
+        if (!saw_header) {
+            try errPrint(io, "selftest: no group header rendered\n", .{});
+            return 1;
+        }
+        press(&app, .char, 't'); // restore ungrouped for the checks below
+        app.draw(&screen, now);
+    }
+
     // Move down twice, draw.
     press(&app, .char, 'j');
     press(&app, .char, 'j');

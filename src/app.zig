@@ -14,6 +14,41 @@ const input = @import("tui/input.zig");
 const filter_mod = @import("filter.zig");
 const slam_mod = @import("slam.zig");
 
+/// Decorated entry for the group-by-type sort (kind + device pointer).
+const Pair = struct { k: u8, e: *store_mod.Entry };
+
+/// Device comparator for the list view (no grouping — see refreshOrder for
+/// the kind-major decorate-sort used when group_by_type is on).
+fn devLess(mode: SortMode, a: *store_mod.Entry, b: *store_mod.Entry) bool {
+    switch (mode) {
+        .last_seen => {
+            if (a.last_ms != b.last_ms) return a.last_ms > b.last_ms;
+            return a.key < b.key;
+        },
+        .rssi => {
+            // No-sample sentinel (127) sorts last, not first.
+            const a_r: i16 = if (a.rssi_last == 127) -128 else a.rssi_last;
+            const b_r: i16 = if (b.rssi_last == 127) -128 else b.rssi_last;
+            if (a_r != b_r) return a_r > b_r;
+            // Tie 1: most recently seen first.
+            if (a.last_ms != b.last_ms) return a.last_ms > b.last_ms;
+            // Tie 2: MAC.
+            return a.key < b.key;
+        },
+        .name => {
+            const an = a.name();
+            const bn = b.name();
+            if (an.len == 0 and bn.len == 0) return a.key < b.key;
+            if (an.len == 0) return false;
+            if (bn.len == 0) return true;
+            const c = std.mem.order(u8, an, bn);
+            if (c != .eq) return c == .lt;
+            return a.key < b.key;
+        },
+        .mac => return a.key < b.key,
+    }
+}
+
 pub const SortMode = enum(u2) {
     last_seen,
     rssi,
@@ -51,6 +86,13 @@ pub const App = struct {
     paused: bool = false,
     show_raw: bool = false,
     sort: SortMode = .rssi,
+    /// Group devices by classified type in the list view ('t').
+    group_by_type: bool = false,
+    /// Kind (classify.Kind as u8) per `ordered` entry; only filled when
+    /// group_by_type is on. Rebuilt in refreshOrder.
+    kinds: std.ArrayListUnmanaged(u8) = .empty,
+    /// Scratch space for the decorate-sort (refreshOrder only).
+    pairs: std.ArrayListUnmanaged(Pair) = .empty,
     backend_code: BackendCode = .starting,
     backend_msg: [512]u8 = @splat(0),
     backend_msg_len: usize = 0,
@@ -86,6 +128,8 @@ pub const App = struct {
     pub fn deinit(self: *App) void {
         self.ordered.deinit(self.gpa);
         self.radar_order.deinit(self.gpa);
+        self.kinds.deinit(self.gpa);
+        self.pairs.deinit(self.gpa);
         self.detail_lines.deinit(self.gpa);
         self.detail_txt.deinit(self.gpa);
         self.slam.deinit();
@@ -318,6 +362,11 @@ pub const App = struct {
                     };
                     self.store.dirty = true;
                 },
+                't' => {
+                    self.group_by_type = !self.group_by_type;
+                    self.store.dirty = true;
+                    self.refreshOrder();
+                },
                 'c' => {
                     self.store.clear();
                     self.sel_key = null;
@@ -412,39 +461,35 @@ pub const App = struct {
         self.store.dirty = false;
         self.ordered.clearRetainingCapacity();
         self.ordered.appendSlice(self.gpa, self.store.entries()) catch return;
-        const Ctx = struct {
-            mode: SortMode,
-            fn lessThan(ctx: @This(), a: *store_mod.Entry, b: *store_mod.Entry) bool {
-                switch (ctx.mode) {
-                    .last_seen => {
-                        if (a.last_ms != b.last_ms) return a.last_ms > b.last_ms;
-                        return a.key < b.key;
-                    },
-                    .rssi => {
-                        // No-sample sentinel (127) sorts last, not first.
-                        const a_r: i16 = if (a.rssi_last == 127) -128 else a.rssi_last;
-                        const b_r: i16 = if (b.rssi_last == 127) -128 else b.rssi_last;
-                        if (a_r != b_r) return a_r > b_r;
-                        // Tie 1: most recently seen first.
-                        if (a.last_ms != b.last_ms) return a.last_ms > b.last_ms;
-                        // Tie 2: MAC.
-                        return a.key < b.key;
-                    },
-                    .name => {
-                        const an = a.name();
-                        const bn = b.name();
-                        if (an.len == 0 and bn.len == 0) return a.key < b.key;
-                        if (an.len == 0) return false;
-                        if (bn.len == 0) return true;
-                        const c = std.mem.order(u8, an, bn);
-                        if (c != .eq) return c == .lt;
-                        return a.key < b.key;
-                    },
-                    .mac => return a.key < b.key,
-                }
+
+        if (self.group_by_type) {
+            // Decorate with the classified kind so groups come out contiguous,
+            // then apply the active device sort inside each group.
+            self.pairs.clearRetainingCapacity();
+            var secs_buf: [40]model.AdSection = undefined;
+            for (self.ordered.items) |e| {
+                const nsecs = e.sections(&secs_buf);
+                const m = classify.classify(secs_buf[0..nsecs], e.name());
+                self.pairs.append(self.gpa, .{ .k = @intFromEnum(m.kind), .e = e }) catch return;
             }
-        };
-        std.mem.sort(*store_mod.Entry, self.ordered.items, Ctx{ .mode = self.sort }, Ctx.lessThan);
+            const PCtx = struct {
+                mode: SortMode,
+                fn lessThan(ctx: @This(), a: Pair, b: Pair) bool {
+                    if (a.k != b.k) return a.k < b.k;
+                    return devLess(ctx.mode, a.e, b.e);
+                }
+            };
+            std.mem.sort(Pair, self.pairs.items, PCtx{ .mode = self.sort }, PCtx.lessThan);
+            for (self.ordered.items, 0..) |*slot, i| slot.* = self.pairs.items[i].e;
+        } else {
+            const Ctx = struct {
+                mode: SortMode,
+                fn lessThan(ctx: @This(), a: *store_mod.Entry, b: *store_mod.Entry) bool {
+                    return devLess(ctx.mode, a, b);
+                }
+            };
+            std.mem.sort(*store_mod.Entry, self.ordered.items, Ctx{ .mode = self.sort }, Ctx.lessThan);
+        }
 
         // Apply the device filter (in place).
         if (self.filter.active()) {
@@ -456,6 +501,19 @@ pub const App = struct {
                 }
             }
             self.ordered.shrinkRetainingCapacity(w);
+        }
+
+        // Kind per surviving entry (for group headers + scroll math).
+        self.kinds.clearRetainingCapacity();
+        if (self.group_by_type) {
+            self.kinds.ensureTotalCapacity(self.gpa, self.ordered.items.len) catch return;
+            // Filtered list preserves pair order — walk in lockstep.
+            var pi: usize = 0;
+            for (self.ordered.items) |e| {
+                while (pi < self.pairs.items.len and self.pairs.items[pi].e != e) pi += 1;
+                if (pi >= self.pairs.items.len) break;
+                self.kinds.appendAssumeCapacity(self.pairs.items[pi].k);
+            }
         }
 
         // Radar navigation order: nearest (strongest signal) first.
@@ -473,7 +531,7 @@ pub const App = struct {
         s.clear();
         if (self.view == .list) {
             widgets.drawTopBar(s, self.backend_label, self.store.count(), now_ms, self.paused, self.sort.label(), if (self.filter.active()) self.filter.rawText() else null);
-            widgets.drawListBody(s, self.ordered.items, self.selIndex(), self.listTop(s), now_ms, self.show_raw);
+            widgets.drawListBody(s, self.ordered.items, if (self.group_by_type) self.kinds.items else null, self.selIndex(), self.listTop(s), now_ms, self.show_raw, self.group_by_type);
             if (self.store.count() == 0) {
                 widgets.drawEmpty(s, switch (self.backend_code) {
                     .starting => "starting backend…",
@@ -527,10 +585,37 @@ pub const App = struct {
         const idx = self.selIndex();
         const n = self.ordered.items.len;
         if (n == 0 or vh == 0) return 0;
+        var top: usize = 0;
         if (idx >= vh / 2 and n > vh) {
-            return @min(idx - vh / 2, n - vh);
+            top = @min(idx - vh / 2, n - vh);
         }
-        return 0;
+        // Group headers consume viewport lines — make sure the selected
+        // device actually lands inside the window.
+        if (self.group_by_type and self.kinds.items.len == n) {
+            const kinds = self.kinds.items;
+            while (top < idx) {
+                var rows: usize = 0;
+                var i = top;
+                var prev: u8 = 0xFF;
+                var fits = false;
+                while (i < n) : (i += 1) {
+                    if (kinds[i] != prev) {
+                        rows += 1; // header row
+                        prev = kinds[i];
+                    }
+                    const dev_row = rows;
+                    rows += 1;
+                    if (i == idx) {
+                        fits = dev_row < vh;
+                        break;
+                    }
+                    if (rows >= vh) break;
+                }
+                if (fits) break;
+                top += 1;
+            }
+        }
+        return top;
     }
 
     // --- detail view construction ------------------------------------------
