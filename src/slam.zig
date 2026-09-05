@@ -147,8 +147,22 @@ pub const Slam = struct {
     /// current observer step; `events_total` is the device's cumulative
     /// advertisement count (confidence via delta).
     pub fn observe(self: *Slam, key: u64, dist_m: f32, events_total: u32) void {
-        if (self.deviceCount() >= max_device_nodes) {
-            if (self.deviceNodeIndex(key) == null) return;
+        if (self.deviceCount() >= max_device_nodes and self.deviceNodeIndex(key) == null) {
+            // Evict the oldest tracked device to make room — mirrors
+            // beginStep()'s observer pruning. Without this, a device is
+            // never removed once added, so once max_device_nodes distinct
+            // keys have ever been seen, every subsequently-new device is
+            // silently dropped for the rest of the session. BLE MAC
+            // rotation on iOS/Android means a single physical device can
+            // consume several of these slots over a long-running session,
+            // making the cap reachable far sooner than "60 physical
+            // devices" — this used to mean the map just stopped growing.
+            for (self.nodes.items, 0..) |nd, i| {
+                if (nd.kind == .device) {
+                    self.removeNode(@intCast(i));
+                    break;
+                }
+            }
         }
         const cur = self.lastObserver() orelse return;
 
