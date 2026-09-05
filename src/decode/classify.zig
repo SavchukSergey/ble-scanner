@@ -136,8 +136,8 @@ pub fn parseEddystone(data: []const u8, buf: []u8) Eddystone {
     const frame = data[0];
     const body = data[1..];
     switch (frame) {
-        0x00 => { // UID
-            if (body.len < 18) return .unknown_frame;
+        0x00 => { // UID: tx(1) + namespace(10) + instance(6) = 17 bytes read.
+            if (body.len < 17) return .unknown_frame;
             return .{ .uid = .{
                 .tx = @bitCast(body[0]),
                 .namespace = body[1..11][0..10].*,
@@ -160,8 +160,8 @@ pub fn parseEddystone(data: []const u8, buf: []u8) Eddystone {
             }
             return .{ .url = .{ .tx = tx, .url = buf[0..w] } };
         },
-        0x20 => { // TLM
-            if (body.len < 14) return .unknown_frame;
+        0x20 => { // TLM: version(1) + vbatt(2) + temp(2) + adv_cnt(4) + sec_cnt(4) = 13 bytes read.
+            if (body.len < 13) return .unknown_frame;
             if (body[0] != 0x00) return .unknown_frame; // only unencrypted TLM
             return .{ .tlm = .{
                 .vbatt = std.mem.readInt(u16, body[1..3], .big),
@@ -205,6 +205,24 @@ test "classify eddystone url" {
     const sd = ad.serviceData16(&secs).?;
     const e = parseEddystone(sd.data, &buf);
     try testing.expectEqualStrings("https://coffee.com/", e.url.url);
+}
+
+test "parse eddystone tlm at the minimum on-air length" {
+    // Exactly frame(1)+version(1)+vbatt(2)+temp(2)+adv_cnt(4)+sec_cnt(4) =
+    // 14 bytes total, no trailing padding — the shortest a real TLM frame
+    // gets. Regression test for an off-by-one that rejected this as
+    // .unknown_frame (checked body.len < 14 when only 13 are ever read).
+    const data = [_]u8{ 0x20, 0x00, 0x0C, 0x80, 0x00, 0xE6, 0x00, 0x00, 0x0A, 0x00, 0x00, 0x00, 0x3C, 0x00 };
+    var buf: [8]u8 = undefined;
+    const e = parseEddystone(&data, &buf);
+    const t = switch (e) {
+        .tlm => |t| t,
+        else => return error.TestUnexpectedResult,
+    };
+    try testing.expectEqual(@as(u16, 3200), t.vbatt);
+    try testing.expectEqual(@as(i16, 230), t.temp_cx10);
+    try testing.expectEqual(@as(u32, 2560), t.adv_cnt);
+    try testing.expectEqual(@as(u32, 15360), t.sec_cnt);
 }
 
 test "classify continuity and exposure" {

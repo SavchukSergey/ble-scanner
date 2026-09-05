@@ -362,32 +362,15 @@ pub fn decodeExposure(data: []const u8, w: *std.Io.Writer) bool {
     return true;
 }
 
-// --- Eddystone frames (service data 0xFEAA) — detail view of UID/TLM ----------
-
-pub fn decodeEddystone(data: []const u8, w: *std.Io.Writer) bool {
-    if (data.len < 1) return false;
-    switch (data[0]) {
-        0x00 => {
-            if (data.len < 18) return false;
-            var hex: [24]u8 = undefined;
-            w.writeAll("frame           UID\n") catch return true;
-            w.print("tx power @0 m   {d} dBm\n", .{@as(i8, @bitCast(data[1]))}) catch {};
-            w.print("namespace       {s}\n", .{hexOf(data[2..12], &hex)}) catch {};
-            w.print("instance        {s}\n", .{hexOf(data[12..18], &hex)}) catch {};
-        },
-        0x20 => {
-            if (data.len < 14) return false;
-            w.writeAll("frame           TLM\n") catch return true;
-            w.print("battery         {d} mV\n", .{std.mem.readInt(u16, data[2..4], .big)}) catch {};
-            const temp = std.mem.readInt(i16, data[4..6], .big);
-            w.print("temperature     {d}.{d} °C\n", .{ @divTrunc(temp, 10), @abs(@mod(temp, 10)) }) catch {};
-            w.print("adv count       {d}\n", .{std.mem.readInt(u32, data[6..10], .big)}) catch {};
-            w.print("uptime          {d} s\n", .{std.mem.readInt(u32, data[10..14], .big)}) catch {};
-        },
-        else => return false, // URL handled by classify; unknown frames stay raw
-    }
-    return true;
-}
+// Eddystone frames (service data 0xFEAA) are NOT decoded here on purpose:
+// app.zig's putVendorDecodes already renders a dedicated "EDDYSTONE"
+// section via classify.parseEddystone for all three known frame types
+// (UID/URL/TLM). A decodeEddystone here used to exist and handle UID/TLM
+// too, which made every UID/TLM beacon render twice (once under
+// "EDDYSTONE", once under "DECODED PAYLOAD") — removed rather than
+// special-cased, since classify.zig is the canonical Eddystone decoder.
+// If you add a new Eddystone frame type, add it to classify.parseEddystone,
+// not here.
 
 // --- Samsung SmartThings Find (service data 0xFD69) --------------------------
 
@@ -579,7 +562,6 @@ pub fn decodeSvcData(uuid: u16, data: []const u8, w: *std.Io.Writer) bool {
         0xFE95 => decodeXiaomi(data, w),
         0xFE2C => decodeFastPair(data, w),
         0xFD6F => decodeExposure(data, w),
-        0xFEAA => decodeEddystone(data, w),
         0xFEF3 => decodeFindMyDevice(data, w),
         0xFCF1 => decodeQuickShare(data, w),
         0xFD69 => decodeSmartThings(data, w),
@@ -822,13 +804,6 @@ test "decode xiaomi sensor objects" {
     try testing.expect(std.mem.indexOf(u8, out, "87 %") != null);
 }
 
-test "decode eddystone tlm" {
-    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
-    defer aw.deinit();
-    const data = [_]u8{ 0x20, 0x00, 0x0C, 0x80, 0x00, 0xE6, 0x00, 0x00, 0x0A, 0x00, 0x00, 0x00, 0x3C, 0x00 };
-    try testing.expect(decodeEddystone(&data, &aw.writer));
-    try aw.writer.flush();
-    const out = aw.written();
-    try testing.expect(std.mem.indexOf(u8, out, "TLM") != null);
-    try testing.expect(std.mem.indexOf(u8, out, "3200 mV") != null);
-}
+// Eddystone TLM/UID coverage lives in classify.zig's tests now — see
+// "parse eddystone tlm at the minimum on-air length" (decodeEddystone was
+// removed from here; see the comment above decodeSvcData's dispatch).
