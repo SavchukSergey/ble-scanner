@@ -200,7 +200,7 @@ const HSTRING = ?*anyopaque;
 
 const Handler = struct {
     vt: *const HandlerVT,
-    ref: u32,
+    ref: std.atomic.Value(u32),
     ctx: *WinRt,
 
     const HandlerVT = extern struct {
@@ -219,7 +219,7 @@ const Handler = struct {
 
     fn create(ctx: *WinRt) *Handler {
         const h = ctx.gpa.create(Handler) catch unreachable;
-        h.* = .{ .vt = &vt_inst, .ref = 1, .ctx = ctx };
+        h.* = .{ .vt = &vt_inst, .ref = std.atomic.Value(u32).init(1), .ctx = ctx };
         return h;
     }
 
@@ -234,17 +234,16 @@ const Handler = struct {
     }
 
     fn hAddRef(self: *Handler) callconv(.c) u32 {
-        self.ref += 1;
-        return self.ref;
+        return self.ref.fetchAdd(1, .acq_rel) + 1;
     }
 
     fn hRelease(self: *Handler) callconv(.c) u32 {
-        self.ref -= 1;
-        if (self.ref == 0) {
+        const prev = self.ref.fetchSub(1, .acq_rel);
+        if (prev == 1) {
             self.ctx.gpa.destroy(self);
             return 0;
         }
-        return self.ref;
+        return prev - 1;
     }
 
     fn hInvoke(self: *Handler, sender: *anyopaque, args: *anyopaque) callconv(.c) i32 {
@@ -286,6 +285,7 @@ pub const WinRt = struct {
             const hr = comapi.pRoGetActivationFactory.?(hstr, &IID_IActivationFactory, &factory);
             if (hr != 0) return error.ActivationFactoryFailed;
         }
+        defer _ = vRelease(factory.?); // release factory when done
 
         var insp: ?*anyopaque = null;
         if (vtable(factory.?, VT_IActivationFactory).ActivateInstance(factory.?, &insp) != 0)
@@ -307,10 +307,13 @@ pub const WinRt = struct {
         const handler = Handler.create(self);
         if (vt.add_Received(w, @ptrCast(handler), &self.cookie) != 0) {
             self.b.push(.{ .backend = .{ .code = .failed, .msg = "add_Received failed" } });
+            _ = handler.hRelease(); // release our ref on failure
             return;
         }
         if (vt.Start(w) != 0) {
             self.b.push(.{ .backend = .{ .code = .failed, .msg = "Start failed (no BT adapter?)" } });
+            _ = vt.remove_Received(w, self.cookie);
+            _ = handler.hRelease();
             return;
         }
         self.b.push(.{ .backend = .{ .code = .started } });
@@ -321,9 +324,10 @@ pub const WinRt = struct {
 
         _ = vt.Stop(w);
         _ = vt.remove_Received(w, self.cookie);
-        // Release our initial handler reference (create started at ref=1;
-        // remove_Released drops the runtime's reference; ours is left).
+        // Release our initial handler reference.
         _ = handler.hRelease();
+        // Release the watcher COM reference.
+        _ = vRelease(w);
     }
 
     pub fn stop(self: *WinRt) void {
@@ -354,14 +358,41 @@ fn extractAndEmit(ctx: *WinRt, args: *anyopaque) !void {
     var adv_type: i32 = 0;
     _ = av.get_AdvertisementType(args, &adv_type);
 
-    // LocalName via HSTRING
+    // LocalName via HSTRING — UTF-16LE, must transcode to UTF-8.
+    var name_buf: [64]u8 = undefined;
     var name: ?[]const u8 = null;
     {
         var hstr: HSTRING = null;
         if (adv_vt.get_LocalName(adv.?, &hstr) == 0 and hstr != null) {
             var len: u32 = 0;
             const buf = comapi.pWindowsGetStringRawBuffer.?(hstr, &len);
-            if (len > 0) name = @as([*]const u8, @ptrCast(buf))[0..len];
+            if (len > 0 and buf != null) {
+                // Transcode UTF-16 → UTF-8 (ASCII fast path).
+                const units = buf.?[0..@min(len, 32)]; // max 32 UTF-16 units
+                var w: usize = 0;
+                for (units) |u| {
+                    if (w >= name_buf.len) break;
+                    if (u < 0x80 and u >= 0x20) {
+                        name_buf[w] = @intCast(u);
+                        w += 1;
+                    } else if (u < 0x800 and w + 1 < name_buf.len) {
+                        // 2-byte UTF-8
+                        name_buf[w] = @intCast(0xC0 | (u >> 6));
+                        name_buf[w + 1] = @intCast(0x80 | (u & 0x3F));
+                        w += 2;
+                    } else if (w + 2 < name_buf.len) {
+                        // 3-byte UTF-8 (simplified — skip surrogate pairs)
+                        name_buf[w] = 0xE0 | @as(u8, @intCast((u >> 12) & 0x0F));
+                        name_buf[w + 1] = 0x80 | @as(u8, @intCast((u >> 6) & 0x3F));
+                        name_buf[w + 2] = 0x80 | @as(u8, @intCast(u & 0x3F));
+                        w += 3;
+                    } else break;
+                }
+                if (w > 0) name = name_buf[0..w];
+            }
+            // NOTE: must copy name bytes BEFORE deleting the HSTRING,
+            // the raw buffer is only valid while the HSTRING is alive.
+            // We copy into name_buf above, so it's safe to delete now.
             _ = comapi.pWindowsDeleteString.?(hstr);
         }
     }

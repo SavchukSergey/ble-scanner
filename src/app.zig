@@ -162,7 +162,10 @@ pub const App = struct {
 
     fn handleRadarKey(self: *App, k: input.Key) void {
         switch (k.code) {
-            .escape => self.view = .list,
+            .escape => {
+                self.view = .list;
+                self.map_mode = false; // reset so `m` cycles from rings next time
+            },
             .up => self.moveRadarSel(false),
             .down => self.moveRadarSel(true),
             .page_up => self.moveRadarSel(false),
