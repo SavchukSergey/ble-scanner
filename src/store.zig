@@ -238,8 +238,11 @@ fn localNameFromSections(sections: []const model.AdSection) []const u8 {
     }
     return fallback;
 }
-/// Replace control characters / invalid UTF-8 lead bytes with '?' so the
-/// renderer never gets garbage. Cuts at the FIRST control char.
+/// Trim trailing NUL/space, then cut at the first control character
+/// (byte < 0x20 or 0x7F). Does NOT validate UTF-8 — a malformed multi-byte
+/// sequence can pass through untouched; Screen.text()/textBounded() are
+/// the layer responsible for degrading invalid UTF-8 to '?' at render
+/// time, not this function.
 fn sanitizeName(s: []const u8) []const u8 {
     var end = s.len;
     while (end > 0 and (s[end - 1] == 0 or s[end - 1] == ' ')) end -= 1;
