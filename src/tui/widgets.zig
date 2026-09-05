@@ -682,15 +682,22 @@ fn drawSelectionReadout(s: *Screen, entries: []*Entry, sel_idx: usize) void {
 
 /// Scrolling nearest-devices panel (radar + map views); follows the
 /// selection like the main list.
+///
+/// `entries` must already be sorted strongest-RSSI-first (both call sites
+/// pass App.radar_order, which App.refreshOrder() sorts with that exact
+/// comparator) — this function must NOT re-sort it itself. It used to,
+/// via `std.mem.sort(*Entry, entries, ...)`: since a Zig slice is a
+/// {ptr,len} view, that sorted the CALLER's backing array in place as a
+/// side effect of drawing, silently reordering App.radar_order (which
+/// keyboard navigation — home/end/j/k — indexes into directly) every
+/// single frame. It happened to be a no-op today only because the sort
+/// criterion was identical to refreshOrder()'s, so it was invisible; it
+/// would silently break keyboard navigation the moment either sort's
+/// criterion changed without the other following along.
 fn drawNearestPanel(s: *Screen, entries: []*Entry, sel_idx: usize) void {
     if (s.w < 104 or entries.len == 0) return;
         const px: u32 = s.w - 26;
         const sorted = entries;
-        std.mem.sort(*Entry, sorted, {}, struct {
-            fn lt(_: void, a: *Entry, b: *Entry) bool {
-                return a.rssiAvg() > b.rssiAvg();
-            }
-        }.lt);
 
         const rows_avail: usize = if (s.h > 11) s.h - 7 else 1;
         var top: usize = 0;
