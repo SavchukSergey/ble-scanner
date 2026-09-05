@@ -11,7 +11,7 @@ Eddystone, Google Fast Pair / Quick Share / Find My Device, Microsoft Swift
 Pair, Xiaomi Mi Beacon and Samsung SmartThings Find.
 
 ```
- ble-scanner · win-ps · sort: last seen                              13 devices · 18:32:07
+ ble-scanner · win-rt · sort: rssi                                           13 devices · 18:32:07
  ADDRESS           T  NAME                                    RSSI     LAST COMPANY            TYPE
  AA:BB:CC:00:11:22 *  Amazfit Band 7                          ▃ -67    2s   Anhui Huami Infor… Amazfit
  D4:CA:6E:12:34:56 *  (unknown)                               ▄ -58    2s   Xiaomi Inc.        Xiaomi device

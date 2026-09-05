@@ -50,7 +50,7 @@ pub const App = struct {
     quit: bool = false,
     paused: bool = false,
     show_raw: bool = false,
-    sort: SortMode = .last_seen,
+    sort: SortMode = .rssi,
     backend_code: BackendCode = .starting,
     backend_msg: [512]u8 = @splat(0),
     backend_msg_len: usize = 0,
@@ -421,7 +421,13 @@ pub const App = struct {
                         return a.key < b.key;
                     },
                     .rssi => {
-                        if (a.rssi_last != b.rssi_last) return a.rssi_last > b.rssi_last;
+                        // No-sample sentinel (127) sorts last, not first.
+                        const a_r: i16 = if (a.rssi_last == 127) -128 else a.rssi_last;
+                        const b_r: i16 = if (b.rssi_last == 127) -128 else b.rssi_last;
+                        if (a_r != b_r) return a_r > b_r;
+                        // Tie 1: most recently seen first.
+                        if (a.last_ms != b.last_ms) return a.last_ms > b.last_ms;
+                        // Tie 2: MAC.
                         return a.key < b.key;
                     },
                     .name => {
