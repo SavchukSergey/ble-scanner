@@ -1,7 +1,8 @@
 //! ble-scanner — TUI BLE advertising scanner.
 //!
-//! Backends: replay (any OS), win-ps (Windows, embedded PowerShell + WinRT
-//! watcher). linux-hci is planned (M1).
+//! Backends: win-rt (Windows, native WinRT/COM from Zig — default), win-ps
+//! (Windows, embedded PowerShell + C# fallback), linux-hci (Linux raw HCI),
+//! replay (any OS).
 
 const std = @import("std");
 
@@ -23,7 +24,7 @@ const usage =
     \\ble-scanner — TUI BLE advertising scanner
     \\
     \\usage:
-    \\  ble-scanner                      live scan (win-ps on Windows, linux-hci on Linux)
+    \\  ble-scanner                      live scan (win-rt on Windows, linux-hci on Linux)
     \\  ble-scanner --replay FILE        run from a recorded JSONL capture
     \\  ble-scanner --log FILE           also record events to FILE (any mode)
     \\  ble-scanner --seconds N --log F  headless capture for N seconds (no terminal)
@@ -253,7 +254,7 @@ pub fn main(init: std.process.Init) !u8 {
         try errPrint(io,
             \\error: backend '{s}' is not available on this OS.
             \\
-            \\Available here: replay (always), win-ps (Windows), linux-hci (Linux).
+            \\Available here: replay (always), win-rt + win-ps (Windows), linux-hci (Linux).
             \\
             \\Run from a recording:
             \\  ble-scanner --replay fixtures/demo.jsonl

@@ -139,9 +139,9 @@ it's usually one line.
 ## Architecture
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the design: the platform-neutral
-advertisement contract, the three capture backends (including why the
-Windows one embeds inline C#), the rendering pipeline and the test
-strategy.
+advertisement contract, the capture backends (native WinRT/COM on Windows,
+with an embedded-C# PowerShell fallback), the rendering pipeline and the
+test strategy.
 
 ## License
 

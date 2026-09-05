@@ -40,7 +40,7 @@ pub const Kind = enum {
     pub fn defaultForOs() Kind {
         return switch (builtin.os.tag) {
             .linux => .linux_hci,
-            .windows => .win_ps, // win-rt is experimental; PS/C# is proven
+            .windows => .win_rt, // native COM; win-ps (PS + C#) remains selectable
             else => .replay,
         };
     }

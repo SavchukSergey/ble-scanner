@@ -75,7 +75,8 @@ src/
 ├── ble/
 │   ├── model.zig       AdvEvent / AdSection / AdvType / AddrType — the contract
 │   ├── scanner.zig     backend kind selection (auto → per-OS default)
-│   ├── win_ps.zig      Windows backend: spawn + parse the PowerShell helper
+│   ├── win_rt.zig      Windows default: native WinRT/COM watcher (see §4.1)
+│   ├── win_ps.zig      Windows fallback: spawn + parse the PowerShell helper
 │   ├── win_scanner.ps1 embedded watcher script (inline C#, see §4.2)
 │   ├── linux_hci.zig   raw HCI socket backend
 │   └── replay.zig      JSONL parse + paced re-emission
@@ -114,12 +115,30 @@ src/
 - The report's concatenated AD structures are split into `AdSection`s with
   the same decoder the Windows path uses.
 
-### 4.2 Windows — PowerShell helper with inline C# watcher
+### 4.2 Windows — native WinRT/COM watcher (`win-rt`, default)
 
-The interesting constraint discovered during development: **PowerShell
-scriptblocks cannot receive WinRT events.** `Register-ObjectEvent` rejects
-WinRT event sources outright, and handlers attached via `add_Received`
-never fire while the pipeline is blocked. So `win_scanner.ps1`:
+A single-process backend: loads `combase.dll`, activates
+`BluetoothLEAdvertisementWatcher` via `RoGetActivationFactory`, and consumes
+`Received` events through a hand-written COM vtable handler — all in Zig,
+no PowerShell, no C# compilation, ~100 ms startup. AD sections arrive via
+`IBluetoothLEAdvertisement::get_DataSections`, and section bytes through the
+native-only `IBufferByteAccess` from `robuffer.h` (not in any .winmd — the
+IID must be hardcoded). The subtlety that cost the most time: WinRT vtable
+slot order is not always documented for non-projected interfaces, so the
+layouts here were confirmed via .NET reflection over the metadata.
+
+Names come as HSTRING (UTF-16) and are transcoded to UTF-8 with an ASCII
+fast path. The COM handler's reference count is atomic — callbacks arrive on
+threadpool threads.
+
+### 4.3 Windows — PowerShell helper with inline C# watcher (`win-ps`, fallback)
+
+Kept as a selectable fallback (`--backend win-ps`) for environments where
+the native path misbehaves. The interesting constraint discovered during
+development: **PowerShell scriptblocks cannot receive WinRT events.**
+`Register-ObjectEvent` rejects WinRT event sources outright, and handlers
+attached via `add_Received` never fire while the pipeline is blocked. So
+`win_scanner.ps1`:
 
 1. embeds a C# `BleWatch` class that subscribes to
    `BluetoothLEAdvertisementWatcher.Received` and writes one JSON object
@@ -137,7 +156,7 @@ lines with the same JSONL parser as `replay`. Status/errors are reported
 in-band as `{"status":…}` / `{"error":…}` lines and surfaced as backend
 lifecycle events on the bus.
 
-### 4.3 Replay
+### 4.4 Replay
 
 `--replay FILE` re-emits recorded events with capped pacing; timestamps
 are shifted so "last seen" reads live. The same parser backs the
