@@ -67,15 +67,13 @@ pub const WinRt = struct {
         // Active scanning: the default is Passive (advertising packets
         // only, no scan responses / local names on many devices). win-ps
         // sets this explicitly too — match it here.
-        const hr_sm = wvt.put_ScanningMode(w, @intFromEnum(ScanningMode.active));
-        std.debug.print("put_ScanningMode hr=0x{X:0>8}\n", .{@as(u32, @bitCast(hr_sm))});
+        _ = wvt.put_ScanningMode(w, @intFromEnum(ScanningMode.active));
 
         // Subscribe to the Received event.
         const handler = Handler.create(self);
         defer handler.release();
 
         const hr_sub = wvt.add_Received(w, @ptrCast(handler), &self.event_cookie);
-        std.debug.print("add_Received hr=0x{X:0>8}\n", .{@as(u32, @bitCast(hr_sub))});
         if (hr_sub != 0) {
             self.b.push(.{ .backend = .{ .code = .failed, .msg = "add_Received failed" } });
             return;
@@ -146,13 +144,16 @@ const Handler = struct {
     }
 
     fn handlerQI(self: *Handler, riid: *const GUID, ppv: *?*anyopaque) callconv(.c) i32 {
-        // Answering IAgileObject tells COM this object is safe to call
-        // from any apartment/thread directly, with no proxy/stub
-        // marshaling. That sidesteps needing the exact (hash-derived)
-        // ITypedEventHandler<...> parameterized IID for marshaling
-        // purposes — the watcher's add_Received still gets our real
-        // vtable pointer and calls Invoke directly on the threadpool.
-        if (guidEql(riid, &IID_IUnknown) or guidEql(riid, &IID_IAgileObject)) {
+        // add_Received QueryInterfaces the handler we pass it for the
+        // exact ITypedEventHandler<Watcher, ReceivedEventArgs> IID before
+        // storing it (confirmed empirically: without this, add_Received
+        // returns E_NOTIMPL instead of registering). That IID isn't in
+        // any .winmd — WinRT computes generic instantiation IIDs by
+        // hashing a signature string (RFC 4122 v5 UUID, namespace
+        // 11f47ad5-7b73-42c0-abae-878b1e16adee) — see IID_ITypedEventHandler.
+        // We also answer IAgileObject so COM never tries to marshal calls
+        // to this object across apartments/threads.
+        if (guidEql(riid, &IID_IUnknown) or guidEql(riid, &IID_IAgileObject) or guidEql(riid, &IID_ITypedEventHandler)) {
             ppv.* = @ptrCast(self);
             _ = handlerAddRef(self);
             return S_OK;
@@ -395,7 +396,7 @@ fn guidEql(a: *const GUID, b: *const GUID) bool {
 
 const S_OK: i32 = 0;
 const S_FALSE: i32 = 1;
-const E_NOINTERFACE: i32 = -2147467263; // 0x80004002
+const E_NOINTERFACE: i32 = -2147467262; // 0x80004002
 
 // --- GUIDs ---
 //
@@ -454,6 +455,24 @@ const IID_IBluetoothLEAdvertisement = GUID{
 const IID_IBluetoothLEAdvertisementDataSection = GUID{
     .data1 = 0xD7213314, .data2 = 0x3A43, .data3 = 0x40F9,
     .data4 = .{ 0xB6, 0xF0, 0x92, 0xBF, 0xEF, 0xC3, 0x4A, 0xE3 },
+};
+
+// ITypedEventHandler<BluetoothLEAdvertisementWatcher, BluetoothLEAdvertisementReceivedEventArgs>.
+// Not in any .winmd — generic (parameterized) WinRT interfaces get their
+// IID by hashing a signature string as an RFC 4122 v5 UUID against the
+// namespace 11f47ad5-7b73-42c0-abae-878b1e16adee:
+//   pinterface({9de1c534-6ae1-11e0-84e1-18a905bcc53f};       <- TypedEventHandler`2's own GUID
+//     rc(Windows.Devices.Bluetooth.Advertisement.BluetoothLEAdvertisementWatcher;{a6ac336f-f3d3-4297-8d6c-c81ea6623f40});
+//     rc(Windows.Devices.Bluetooth.Advertisement.BluetoothLEAdvertisementReceivedEventArgs;{27987ddf-e596-41be-8d43-9e6731d4a913}))
+// This exact algorithm (namespace GUID, SHA1, "pinterface(...)"/"cinterface(...)"
+// grammar) was verified against this machine's live WinRT runtime: hashing
+// "pinterface({<IMap`2 guid>};string;cinterface(IInspectable))" reproduces
+// one of the real IIDs Windows.Foundation.Collections.PropertySet reports
+// from IInspectable::GetIids (and likewise for IObservableMap<...> and the
+// nested IIterable<IKeyValuePair<...>>) — 3 for 3 exact matches.
+const IID_ITypedEventHandler = GUID{
+    .data1 = 0x90EB4ECA, .data2 = 0xD465, .data3 = 0x5EA0,
+    .data4 = .{ 0xA6, 0x1C, 0x03, 0x3C, 0x8C, 0x5E, 0xCE, 0xF2 },
 };
 
 // --- COM interface vtable types ---
