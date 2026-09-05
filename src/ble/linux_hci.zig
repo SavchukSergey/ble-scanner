@@ -221,7 +221,7 @@ pub const LinuxHci = struct {
             // evt_type u16, addr_type u8, addr[6], primary_phy u8, secondary_phy u8,
             // sid u8, tx i8, rssi i8, period u16, dir_type u8, dir_addr[6],
             // data_len u8, data
-            if (p + 25 > body.len) return; // header before data: 2+1+6+1+1+1+1+1+2+1+6+1 = 24
+            if (p + 24 > body.len) return; // header before data: 2+1+6+1+1+1+1+1+2+1+6+1 = 24
             const evt_type = std.mem.readInt(u16, body[p..][0..2], .little);
             const addr_type = body[p + 2] & 0x03;
             var addr: [6]u8 = undefined;
