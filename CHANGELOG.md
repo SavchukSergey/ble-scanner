@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-05
+
+### Added
+- Native Windows backend: single-process WinRT/COM capture with no
+  PowerShell involvement, ~100 ms startup, no temp files — now the
+  default (`--backend win-ps` keeps the previous C# helper path).
+- Group devices by type with `t`: contiguous groups with headers like
+  `── Apple Continuity (21) ──`, ordered by the active sort within
+  each group; works with filters and the raw view.
+- Vendor payload decoders: AirPods battery percentages, Apple Nearby
+  Action names, Find My accessory-connection state, Garmin wearable
+  status, HeySiri, Huami legacy MAC, Samsung TV, GREE AC, Canon
+  cameras, and Xiaomi beacons in manufacturer data; device-type rules
+  for BLUETTI power stations, GREE air conditioners, and Samsung TVs.
+- Signal-strength sorting is now the default, breaking ties by
+  last-seen then MAC.
+
+### Fixed
+- Device names from the native backend were garbled (UTF-16 strings
+  sliced as raw bytes).
+- Native-backend AD payloads came back empty (wrong buffer-access
+  interface on the section bytes).
+- Microsoft CDP decoder printed a blank or garbled name on real traffic.
+- Eddystone UID/TLM frames rendered twice, and minimal-length frames
+  were hidden by an off-by-one.
+- Escaping the radar/map view broke the list→rings→map cycle on
+  re-entry; COM references leaked on shutdown and error paths.
+
 ## [0.0.2] - 2026-09-04
 
 ### Added
