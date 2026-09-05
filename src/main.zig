@@ -8,6 +8,7 @@ const std = @import("std");
 const model = @import("ble/model.zig");
 const replay_mod = @import("ble/replay.zig");
 const win_ps_mod = @import("ble/win_ps.zig");
+const win_rt_mod = @import("ble/win_rt.zig");
 const linux_hci_mod = @import("ble/linux_hci.zig");
 const scanner = @import("ble/scanner.zig");
 const bus_mod = @import("bus.zig");
@@ -29,7 +30,7 @@ const usage =
     \\  ble-scanner --selftest           headless render test (needs --replay)
     \\  ble-scanner --ascii              ASCII glyphs (hostile terminal fonts)
     \\  ble-scanner --size WxH           virtual size for --selftest (default 110x32)
-    \\  ble-scanner --backend KIND       auto | linux-hci | win-ps | replay
+    \\  ble-scanner --backend KIND       auto | linux-hci | win-rt | win-ps | replay
     \\  ble-scanner --adapter NAME       BLE adapter to use (linux-hci, M1)
     \\  ble-scanner --help               this help
     \\
@@ -111,6 +112,7 @@ const Runner = struct {
     const Impl = union(enum) {
         replay: *replay_mod.Replay,
         win_ps: *win_ps_mod.WinPs,
+        win_rt: *win_rt_mod.WinRt,
         linux_hci: *linux_hci_mod.LinuxHci,
     };
 
@@ -118,6 +120,7 @@ const Runner = struct {
         return switch (self.impl) {
             .replay => "replay",
             .win_ps => win_ps_mod.label,
+            .win_rt => win_rt_mod.label,
             .linux_hci => linux_hci_mod.label,
         };
     }
@@ -130,6 +133,11 @@ const Runner = struct {
                 r.close();
             },
             .win_ps => |w| {
+                w.stop();
+                self.thread.join();
+                w.gpa.destroy(w);
+            },
+            .win_rt => |w| {
                 w.stop();
                 self.thread.join();
                 w.gpa.destroy(w);
@@ -168,6 +176,15 @@ fn startRunner(io: std.Io, gpa: std.mem.Allocator, b: *bus_mod.Bus, opts: Option
             };
             return .{ .impl = .{ .win_ps = w }, .thread = t };
         },
+        .win_rt => {
+            const w = try win_rt_mod.WinRt.spawn(gpa, io, b);
+            const t = std.Thread.spawn(.{}, winRtThreadMain, .{w}) catch |e| {
+                w.stop();
+                gpa.destroy(w);
+                return e;
+            };
+            return .{ .impl = .{ .win_rt = w }, .thread = t };
+        },
         .linux_hci => {
             const h = linux_hci_mod.LinuxHci.spawn(gpa, io, b, opts.adapter) catch |e| {
                 try errPrint(io, "error: {s}\n", .{linux_hci_mod.LinuxHci.hint(e)});
@@ -189,6 +206,10 @@ fn replayThreadMain(rep: *replay_mod.Replay, b: *bus_mod.Bus) void {
 }
 
 fn winPsThreadMain(w: *win_ps_mod.WinPs) void {
+    w.threadMain();
+}
+
+fn winRtThreadMain(w: *win_rt_mod.WinRt) void {
     w.threadMain();
 }
 
@@ -741,6 +762,7 @@ test {
     _ = @import("ble/replay.zig");
     _ = @import("ble/scanner.zig");
     _ = @import("ble/win_ps.zig");
+    _ = @import("ble/win_rt.zig");
     _ = @import("ble/linux_hci.zig");
     _ = @import("bus.zig");
     _ = @import("store.zig");

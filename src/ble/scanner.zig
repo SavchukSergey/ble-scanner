@@ -1,6 +1,6 @@
-//! Scanner backend factory. replay (any OS), win-ps (Windows, via an
-//! embedded PowerShell + WinRT watcher) and linux-hci (raw HCI socket) are
-//! implemented.
+//! Scanner backend factory. replay (any OS), win-rt (Windows, native
+//! WinRT COM), win-ps (Windows, embedded PowerShell fallback) and
+//! linux-hci (raw HCI socket) are implemented.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -8,6 +8,7 @@ const builtin = @import("builtin");
 pub const Kind = enum {
     auto,
     linux_hci,
+    win_rt,
     win_ps,
     replay,
 
@@ -15,6 +16,7 @@ pub const Kind = enum {
         const map = .{
             .{ "auto", .auto },
             .{ "linux-hci", .linux_hci },
+            .{ "win-rt", .win_rt },
             .{ "win-ps", .win_ps },
             .{ "replay", .replay },
         };
@@ -28,6 +30,7 @@ pub const Kind = enum {
         return switch (self) {
             .auto => "auto",
             .linux_hci => "linux-hci",
+            .win_rt => "win-rt",
             .win_ps => "win-ps",
             .replay => "replay",
         };
@@ -37,7 +40,7 @@ pub const Kind = enum {
     pub fn defaultForOs() Kind {
         return switch (builtin.os.tag) {
             .linux => .linux_hci,
-            .windows => .win_ps,
+            .windows => .win_ps, // win-rt is experimental; PS/C# is proven
             else => .replay,
         };
     }
@@ -46,6 +49,7 @@ pub const Kind = enum {
     pub fn implemented(self: Kind) bool {
         return switch (self) {
             .replay => true,
+            .win_rt => builtin.os.tag == .windows,
             .win_ps => builtin.os.tag == .windows,
             .linux_hci => builtin.os.tag == .linux,
             .auto => true,
