@@ -372,36 +372,33 @@ fn extractAndEmit(ctx: *WinRt, args: *anyopaque) !void {
 
     var vec: ?*anyopaque = null;
     const hr_ds = adv_vt.get_DataSections(adv.?, &vec);
-    if (hr_ds != 0) {
-        std.debug.print("get_DataSections hr=0x{X:0>8}\n", .{@as(u32, @bitCast(hr_ds))});
-        return;
-    }
+    if (hr_ds != 0) return;
     if (vec == null) return;
     defer _ = vRelease(vec.?);
-        const vv = vtable(vec.?, VT_IVectorView);
-        var count: u32 = 0;
-        if (vv.get_Size(vec.?, &count) == 0) {
-            var i: u32 = 0;
-            while (i < count and n < secs.len) : (i += 1) {
-                var sec: ?*anyopaque = null;
-                if (vv.GetAt(vec.?, i, &sec) == 0 and sec != null) {
-                    defer _ = vRelease(sec.?);
-                    const sv = vtable(sec.?, VT_DataSection);
-                    var dt: u8 = 0;
-                    var buf_i: ?*anyopaque = null;
-                    if (sv.get_DataType(sec.?, &dt) == 0 and
-                        sv.get_Data(sec.?, &buf_i) == 0 and buf_i != null)
-                    {
-                        defer _ = vRelease(buf_i.?);
-                        var ba: ?*anyopaque = null;
-                        if (vQI(buf_i.?, &IID_IBufferByteAccess, &ba) == 0 and ba != null) {
-                            defer _ = vRelease(ba.?);
-                            var dp: ?*u8 = null;
-                            var dl: u32 = 0;
-                            if (vtable(ba.?, VT_BufferByteAccess).GetBuffer(ba.?, &dp, &dl) == 0 and dp != null) {
-                                secs[n] = .{ .typ = dt, .data = @as([*]const u8, @ptrCast(dp.?))[0..dl] };
-                                n += 1;
-                            }
+
+    const vv = vtable(vec.?, VT_IVectorView);
+    var count: u32 = 0;
+    if (vv.get_Size(vec.?, &count) == 0) {
+        var i: u32 = 0;
+        while (i < count and n < secs.len) : (i += 1) {
+            var sec: ?*anyopaque = null;
+            if (vv.GetAt(vec.?, i, &sec) == 0 and sec != null) {
+                defer _ = vRelease(sec.?);
+                const sv = vtable(sec.?, VT_DataSection);
+                var dt: u8 = 0;
+                var buf_i: ?*anyopaque = null;
+                if (sv.get_DataType(sec.?, &dt) == 0 and
+                    sv.get_Data(sec.?, &buf_i) == 0 and buf_i != null)
+                {
+                    defer _ = vRelease(buf_i.?);
+                    var ba: ?*anyopaque = null;
+                    if (vQI(buf_i.?, &IID_IBufferByteAccess, &ba) == 0 and ba != null) {
+                        defer _ = vRelease(ba.?);
+                        var dp: ?*u8 = null;
+                        var dl: u32 = 0;
+                        if (vtable(ba.?, VT_BufferByteAccess).GetBuffer(ba.?, &dp, &dl) == 0 and dp != null) {
+                            secs[n] = .{ .typ = dt, .data = @as([*]const u8, @ptrCast(dp.?))[0..dl] };
+                            n += 1;
                         }
                     }
                 }

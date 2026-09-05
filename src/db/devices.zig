@@ -146,6 +146,18 @@ pub const rules = [_]Rule{
     .{ .name_prefix = "YUNMAI", .kind = .scale, .detail = "YUNMAI smart scale" },
     .{ .name_prefix = "AP_", .kind = .ap, .detail = "BLE provisioning beacon" },
 
+    // BLUETTI power stations (mfr 0x4C42, payload is ASCII 'BLUETTI').
+    .{ .company = 0x4C42, .kind = .appliance, .detail = "BLUETTI power station" },
+
+    // GREE air conditioners (mfr 0x0D23).
+    .{ .company = 0x0D23, .kind = .appliance, .detail = "GREE AC controller" },
+
+    // Samsung TVs (name contains 'Crystal UHD' or 'The Frame').
+    .{ .name_prefix = "65\" Crystal", .kind = .tv, .detail = "Samsung TV" },
+    .{ .name_prefix = "55\" Crystal", .kind = .tv, .detail = "Samsung TV" },
+    .{ .name_prefix = "The Frame", .kind = .tv, .detail = "Samsung TV" },
+    .{ .name_prefix = "QLED", .kind = .tv, .detail = "Samsung TV" },
+
     // Known wearable vendors (no appearance/service hints needed).
     .{ .company = 0x0087, .kind = .watch, .detail = "Garmin" },
     .{ .company = 0x0157, .kind = .band, .detail = "Amazfit" },
