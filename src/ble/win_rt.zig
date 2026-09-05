@@ -26,7 +26,21 @@ pub const GUID = extern struct {
 const IID_IUnknown = GUID{ .data1 = 0x00000000, .data2 = 0x0000, .data3 = 0x0000, .data4 = .{ 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46 } };
 const IID_IActivationFactory = GUID{ .data1 = 0x00000035, .data2 = 0x0000, .data3 = 0x0000, .data4 = .{ 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46 } };
 const IID_Watcher = GUID{ .data1 = 0xA6AC336F, .data2 = 0xF3D3, .data3 = 0x4297, .data4 = .{ 0x8D, 0x6C, 0xC8, 0x1E, 0xA6, 0x62, 0x3F, 0x40 } };
-const IID_IBufferByteAccess = GUID{ .data1 = 0x5B0D3235, .data2 = 0x4DBA, .data3 = 0x4D44, .data4 = .{ 0x86, 0x52, 0x01, 0xB8, 0xD9, 0x3A, 0x3A, 0x8B } };
+// Windows::Storage::Streams::IBufferByteAccess — the ONLY way to get raw
+// bytes out of an IBuffer (get_Data's return type). Do not confuse this
+// with Windows::Foundation::IMemoryBufferByteAccess, a DIFFERENT interface
+// (different GUID, different vtable shape: GetBuffer(byte**, UINT32*) with
+// a length out-param) used only by Windows.Foundation.MemoryBuffer, which
+// is not what get_Data returns. QueryInterface-ing an IBuffer for
+// IMemoryBufferByteAccess's IID fails (E_NOINTERFACE), which silently
+// drops every AD section with no error — that's the bug this comment is
+// here to stop someone from reintroducing. IBufferByteAccess has exactly
+// one method, Buffer(byte** value) — no length; get the length separately
+// from IBuffer::get_Length (see VT_IBuffer / VT_BufferByteAccess below).
+// Value verified against the system's live WinRT runtime: this GUID plus
+// the plain-IUnknown vtable in VT_BufferByteAccess actually returns valid
+// AD-section bytes end to end (see win_rt live-capture testing).
+const IID_IBufferByteAccess = GUID{ .data1 = 0x905A0FEF, .data2 = 0xBC53, .data3 = 0x11DF, .data4 = .{ 0x8C, 0x49, 0x00, 0x1E, 0x4F, 0xC6, 0x86, 0xDA } };
 // IID for ITypedEventHandler<Watcher, ReceivedEventArgs> — from PS reflection
 const IID_Handler = GUID{ .data1 = 0x90EB4ECA, .data2 = 0xD465, .data3 = 0x5EA0, .data4 = .{ 0xA6, 0x1C, 0x03, 0x3C, 0x8C, 0x5E, 0xCE, 0xF2 } };
 
@@ -156,14 +170,37 @@ const VT_IVectorView = extern struct {
     get_Size: *const fn (*anyopaque, *u32) callconv(.c) i32,
 };
 
-const VT_BufferByteAccess = extern struct {
+// Windows.Storage.Streams.IBuffer — a normal WinRT interface (has
+// IInspectable), from .winmd. get_Data() returns this. Only get_Length is
+// needed: the raw pointer comes from IBufferByteAccess below, but that
+// interface has no length accessor of its own — you MUST pair it with
+// IBuffer::get_Length or you don't know how many bytes are valid at the
+// returned pointer.
+const VT_IBuffer = extern struct {
     QueryInterface: *const fn (*anyopaque, *const GUID, *?*anyopaque) callconv(.c) i32,
     AddRef: *const fn (*anyopaque) callconv(.c) u32,
     Release: *const fn (*anyopaque) callconv(.c) u32,
     GetIids: *const fn (*anyopaque, *u32, *?*GUID) callconv(.c) i32,
     GetRuntimeClassName: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32,
     GetTrustLevel: *const fn (*anyopaque, *i32) callconv(.c) i32,
-    GetBuffer: *const fn (*anyopaque, *?*u8, *u32) callconv(.c) i32,
+    get_Capacity: *const fn (*anyopaque, *u32) callconv(.c) i32, // 6 (unused)
+    get_Length: *const fn (*anyopaque, *u32) callconv(.c) i32,   // 7
+};
+
+// Windows::Storage::Streams::IBufferByteAccess — a CLASSIC (non-WinRT) COM
+// interface: plain IUnknown, NO IInspectable slots, exactly one method.
+// It is not declared in any .winmd (it's native-only, from robuffer.h) and
+// it is NOT the same interface as Windows::Foundation::IMemoryBufferByteAccess
+// (different GUID, different 2-arg GetBuffer(byte**, UINT32*) shape — that
+// one belongs to Windows.Foundation.MemoryBuffer, not IBuffer). Mixing the
+// two up is the exact bug that made every AD section come back empty
+// before — see the comment on IID_IBufferByteAccess. If you add fields
+// here, do NOT add IInspectable slots; Buffer() really is vtable slot 3.
+const VT_BufferByteAccess = extern struct {
+    QueryInterface: *const fn (*anyopaque, *const GUID, *?*anyopaque) callconv(.c) i32,
+    AddRef: *const fn (*anyopaque) callconv(.c) u32,
+    Release: *const fn (*anyopaque) callconv(.c) u32,
+    Buffer: *const fn (*anyopaque, *?[*]u8) callconv(.c) i32, // 3 — no length out-param
 };
 
 // --- WinRT function resolution (no .lib needed) ---
@@ -422,13 +459,19 @@ fn extractAndEmit(ctx: *WinRt, args: *anyopaque) !void {
                     sv.get_Data(sec.?, &buf_i) == 0 and buf_i != null)
                 {
                     defer _ = vRelease(buf_i.?);
+                    // Length comes from IBuffer::get_Length (buf_i is
+                    // already an IBuffer — no QI needed for that part).
+                    // The raw pointer comes from a SEPARATE QI for
+                    // IBufferByteAccess (see its comment: do not swap in
+                    // IMemoryBufferByteAccess's 2-arg GetBuffer here).
+                    var len: u32 = 0;
+                    _ = vtable(buf_i.?, VT_IBuffer).get_Length(buf_i.?, &len);
                     var ba: ?*anyopaque = null;
-                    if (vQI(buf_i.?, &IID_IBufferByteAccess, &ba) == 0 and ba != null) {
+                    if (len > 0 and vQI(buf_i.?, &IID_IBufferByteAccess, &ba) == 0 and ba != null) {
                         defer _ = vRelease(ba.?);
-                        var dp: ?*u8 = null;
-                        var dl: u32 = 0;
-                        if (vtable(ba.?, VT_BufferByteAccess).GetBuffer(ba.?, &dp, &dl) == 0 and dp != null) {
-                            secs[n] = .{ .typ = dt, .data = @as([*]const u8, @ptrCast(dp.?))[0..dl] };
+                        var dp: ?[*]u8 = null;
+                        if (vtable(ba.?, VT_BufferByteAccess).Buffer(ba.?, &dp) == 0 and dp != null) {
+                            secs[n] = .{ .typ = dt, .data = dp.?[0..len] };
                             n += 1;
                         }
                     }
