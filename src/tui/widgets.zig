@@ -259,8 +259,8 @@ fn computeColumns(w: u32) Columns {
 
     const rssi_w: u32 = 8; // "█ -100"
     const last_w: u32 = 4;
-    const company_w: u32 = 18;
-    const type_w: u32 = 15;
+    const company_w: u32 = 22;
+    const type_w: u32 = 19;
 
     var total: u32 = 0;
     if (w >= 104) {
