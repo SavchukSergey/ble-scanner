@@ -114,6 +114,14 @@ pub const Decoder = struct {
                     self.param = self.param *| 10 +| (b - '0');
                     return null;
                 }
+                // Parameter separators and private/intermediate markers:
+                // stay in CSI so the rest of a modified-key sequence
+                // (e.g. CSI 1;2A = Shift+Up) or a mouse report is consumed
+                // whole instead of leaking its bytes as literal chars.
+                if (b == ';' or b == '?' or b == '<' or b == '>' or b == '=') {
+                    self.param = 0;
+                    return null;
+                }
                 self.state = .ground;
                 return switch (b) {
                     'A' => key(.up),
@@ -219,4 +227,18 @@ test "lone escape emits escape then next key" {
     var d2: Decoder = .{};
     try expectKeys(&d2, "\x1b", &.{});
     try testing.expectEqual(Code.escape, d2.flushTail().?.code);
+}
+
+test "modified keys and mouse reports are swallowed whole" {
+    // Shift/Ctrl/Alt + arrows (xterm, Windows Terminal): CSI 1;<mod><dir>
+    // decodes to the base arrow — no phantom "2a" chars that would land
+    // in the filter editor.
+    var d: Decoder = .{};
+    try expectKeys(&d, "\x1b[1;2A", &.{.{ .code = .up }});
+    try expectKeys(&d, "\x1b[1;5C", &.{.{ .code = .right }});
+    try expectKeys(&d, "\x1b[1;3B", &.{.{ .code = .down }});
+    // Plain keys still decode after a swallowed sequence.
+    try expectKeys(&d, "\x1b[Aj", &.{ .{ .code = .up }, .{ .code = .char, .ch = 'j' } });
+    // SGR mouse report: CSI < 0 ; col ; row M — fully ignored.
+    try expectKeys(&d, "\x1b[<0;33;11Mq", &.{.{ .code = .char, .ch = 'q' }});
 }
