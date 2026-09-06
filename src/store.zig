@@ -259,19 +259,26 @@ fn sanitizeName(s: []const u8) []const u8 {
 fn copySections(self: *Store, e: *Entry, sections: []const model.AdSection) void {
     var views: [64]model.AdSection = undefined;
     var n = e.sections(&views);
+    // Which stored views this event has already replaced. BLE allows
+    // several same-type structures in one frame (e.g. two 0x02 UUID-list
+    // sections) — they are distinct entries and must all survive, while
+    // across separate events latest-per-type still wins.
+    var replaced: [64]bool = @splat(false);
 
     for (sections) |s| {
         if (s.data.len == 0) continue;
         var found = false;
-        for (views[0..n]) |*v| {
-            if (v.typ == s.typ) {
+        for (views[0..n], 0..) |*v, vi| {
+            if (v.typ == s.typ and !replaced[vi]) {
                 v.data = s.data;
+                replaced[vi] = true;
                 found = true;
                 break;
             }
         }
         if (!found and n < views.len) {
             views[n] = .{ .typ = s.typ, .data = s.data };
+            replaced[n] = true;
             n += 1;
         }
     }
@@ -449,4 +456,56 @@ test "sections merge across ADV and SCAN_RSP" {
         }
     }
     try testing.expect(has_flags and has_mfr and has_name);
+}
+
+test "same-type sections within one advertisement are kept distinct" {
+    var store = try Store.init(testing.allocator);
+    defer store.deinit();
+
+    // Real shape from wild17 (YUNMAI-family scale): two 0x02 UUID-list
+    // sections in a single frame. The merge used to collapse them,
+    // silently dropping 0x1310 and breaking service-based classification.
+    const mkEv = struct {
+        fn ev(secs_in: []const model.AdSection) *model.AdvEvent {
+            const a = testing.allocator;
+            const e = a.create(model.AdvEvent) catch unreachable;
+            e.* = .{
+                .addr = .{ 0x5C, 0xF8, 0x21, 0xD5, 0xCC, 0x30 },
+                .addr_type = .public,
+                .adv_type = .connectable_undirected,
+                .rssi = -100,
+                .sections = a.dupe(model.AdSection, secs_in) catch unreachable,
+                .ts_ms = 1000,
+            };
+            return e;
+        }
+    }.ev;
+    const adv = [_]model.AdSection{
+        .{ .typ = 0x01, .data = &.{0x06} },
+        .{ .typ = 0x02, .data = &.{ 0x10, 0x13 } },
+        .{ .typ = 0x02, .data = &.{ 0x12, 0x58 } },
+        .{ .typ = 0xFF, .data = &[_]u8{ 0x30, 0xCC, 0xD5, 0x21, 0xF8, 0x5C, 0x00, 0x00 } },
+    };
+    store.update(mkEv(&adv));
+
+    const e = store.get(model.addrKey(.{ 0x5C, 0xF8, 0x21, 0xD5, 0xCC, 0x30 }, .public)).?;
+    var out: [8]model.AdSection = undefined;
+    const n = e.sections(&out);
+    try testing.expectEqual(@as(usize, 4), n);
+    var seen_1310 = false;
+    var seen_5812 = false;
+    for (out[0..n]) |s| {
+        if (s.typ != 0x02) continue;
+        if (std.mem.eql(u8, s.data, &.{ 0x10, 0x13 })) seen_1310 = true;
+        if (std.mem.eql(u8, s.data, &.{ 0x12, 0x58 })) seen_5812 = true;
+    }
+    try testing.expect(seen_1310 and seen_5812);
+
+    // A later event still refreshes per-type across events (latest wins
+    // for the first slot) without duplicating.
+    const adv2 = [_]model.AdSection{
+        .{ .typ = 0x01, .data = &.{0x06} },
+    };
+    store.update(mkEv(&adv2));
+    try testing.expectEqual(@as(usize, 4), e.sections(&out));
 }
