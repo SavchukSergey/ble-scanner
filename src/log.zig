@@ -27,7 +27,10 @@ pub fn writeEvent(w: *std.Io.Writer, ev: *const model.AdvEvent) !void {
         try w.writeAll("null");
     }
     try w.writeAll(",\"secs\":[");
-    var hex: [2048]u8 = undefined; // extended adv can reach ~1650 bytes
+    // Extended advertising can reach ~1650 bytes in a single section, so
+    // the hex staging must hold 2×1650 = 3300 chars (the old 2048 buffer
+    // silently truncated any section past 1024 bytes, corrupting logs).
+    var hex: [4096]u8 = undefined;
     for (ev.sections, 0..) |sec, i| {
         if (i > 0) try w.writeByte(',');
         try w.print("{{\"t\":{d},\"d\":\"{s}\"}}", .{ sec.typ, model.hexEncode(sec.data, &hex) });
