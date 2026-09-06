@@ -323,3 +323,22 @@ test "classify samsung tv beacon with no advertised name" {
     try testing.expectEqual(Kind.tv, m.kind);
     try testing.expectEqualStrings("Samsung TV", m.detail.?);
 }
+
+test "classify unnamed YUNMAI-family scale by service signature" {
+    // Real capture (wild17): no name captured (device heard 3x at -107
+    // dBm, no scan response), manufacturer data is the device's own
+    // reversed MAC + 0000, custom svc 0x1310 + model UUID 0x5812.
+    const secs = [_]model.AdSection{
+        .{ .typ = 0x01, .data = &.{0x06} },
+        .{ .typ = 0x02, .data = &.{ 0x10, 0x13 } },
+        .{ .typ = 0x02, .data = &.{ 0x12, 0x58 } },
+        .{ .typ = 0xFF, .data = &[_]u8{ 0x30, 0xCC, 0xD5, 0x21, 0xF8, 0x5C, 0x00, 0x00 } },
+    };
+    const m = classify(&secs, "");
+    try testing.expectEqual(Kind.scale, m.kind);
+    try testing.expectEqualStrings("YUNMAI-family scale", m.detail.?);
+
+    // The named sibling keeps its more specific label (name rule wins).
+    const named = classify(&secs, "YUNMAI-ISSE-US");
+    try testing.expectEqualStrings("YUNMAI smart scale", named.detail.?);
+}

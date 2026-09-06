@@ -144,6 +144,13 @@ pub const rules = [_]Rule{
     .{ .name_prefix = "Galaxy Buds", .kind = .headphones, .detail = "Galaxy Buds" },
     .{ .name_prefix = "BYD", .kind = .car, .detail = "BYD (digital key)" },
     .{ .name_prefix = "YUNMAI", .kind = .scale, .detail = "YUNMAI smart scale" },
+    // YUNMAI-family scales without a captured name: the manufacturer data
+    // is the device's own reversed MAC + 0000 (so the "company id" varies
+    // per device and can't key a rule), but the custom service UUID 0x1310
+    // (not SIG-assigned) paired with a model-varying 0x58xx UUID is the
+    // family signature — verified on two independent field devices
+    // (wild16/wild17: named YUNMAI-ISSE-US and an unnamed sibling).
+    .{ .svc = 0x1310, .kind = .scale, .detail = "YUNMAI-family scale" },
     .{ .name_prefix = "AP_", .kind = .ap, .detail = "BLE provisioning beacon" },
 
     // BLUETTI power stations (mfr 0x4C42, payload is ASCII 'BLUETTI').
