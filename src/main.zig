@@ -794,6 +794,94 @@ fn errPrint(io: std.Io, comptime fmt: []const u8, args: anytype) !void {
     try std.Io.File.stderr().writeStreamingAll(io, fw.buffered());
 }
 
+const testing = std.testing;
+
+fn parseOk(args: []const [:0]const u8) Options {
+    return parseArgs(args) orelse @panic("expected parseArgs to succeed");
+}
+
+test "parseArgs: defaults with no flags" {
+    const o = parseOk(&.{"ble-scanner"});
+    try testing.expect(o.replay == null);
+    try testing.expect(o.log == null);
+    try testing.expect(o.seconds == null);
+    try testing.expect(!o.selftest);
+    try testing.expect(!o.ascii);
+    try testing.expectEqual(@as(u32, 110), o.width);
+    try testing.expectEqual(@as(u32, 32), o.height);
+    try testing.expectEqual(scanner.Kind.auto, o.backend);
+    try testing.expectEqualStrings("hci0", o.adapter);
+    try testing.expect(!o.help);
+}
+
+test "parseArgs: --help and -h" {
+    try testing.expect(parseOk(&.{ "ble-scanner", "--help" }).help);
+    try testing.expect(parseOk(&.{ "ble-scanner", "-h" }).help);
+}
+
+test "parseArgs: flags with a separate-argument value" {
+    const o = parseOk(&.{ "ble-scanner", "--replay", "cap.jsonl", "--log", "out.jsonl", "--seconds", "30", "--backend", "win-rt", "--adapter", "hci1" });
+    try testing.expectEqualStrings("cap.jsonl", o.replay.?);
+    try testing.expectEqualStrings("out.jsonl", o.log.?);
+    try testing.expectEqual(@as(u32, 30), o.seconds.?);
+    try testing.expectEqual(scanner.Kind.win_rt, o.backend);
+    try testing.expectEqualStrings("hci1", o.adapter);
+}
+
+test "parseArgs: --flag=value forms match their separate-argument equivalents" {
+    const o = parseOk(&.{ "ble-scanner", "--replay=cap.jsonl", "--log=out.jsonl", "--seconds=30", "--backend=win-rt" });
+    try testing.expectEqualStrings("cap.jsonl", o.replay.?);
+    try testing.expectEqualStrings("out.jsonl", o.log.?);
+    try testing.expectEqual(@as(u32, 30), o.seconds.?);
+    try testing.expectEqual(scanner.Kind.win_rt, o.backend);
+}
+
+test "parseArgs: --selftest and --ascii are bare boolean flags" {
+    const o = parseOk(&.{ "ble-scanner", "--selftest", "--ascii" });
+    try testing.expect(o.selftest);
+    try testing.expect(o.ascii);
+}
+
+test "parseArgs: --size WxH" {
+    const o = parseOk(&.{ "ble-scanner", "--size", "80x24" });
+    try testing.expectEqual(@as(u32, 80), o.width);
+    try testing.expectEqual(@as(u32, 24), o.height);
+}
+
+test "parseArgs: --size rejects a missing 'x' separator" {
+    try testing.expect(parseArgs(&.{ "ble-scanner", "--size", "8024" }) == null);
+}
+
+test "parseArgs: --size rejects non-numeric dimensions" {
+    try testing.expect(parseArgs(&.{ "ble-scanner", "--size", "abcxdef" }) == null);
+    try testing.expect(parseArgs(&.{ "ble-scanner", "--size", "80xdef" }) == null);
+}
+
+test "parseArgs: --seconds rejects a non-numeric value" {
+    try testing.expect(parseArgs(&.{ "ble-scanner", "--seconds", "soon" }) == null);
+    try testing.expect(parseArgs(&.{ "ble-scanner", "--seconds=soon" }) == null);
+}
+
+test "parseArgs: --backend rejects an unknown kind" {
+    try testing.expect(parseArgs(&.{ "ble-scanner", "--backend", "bluetooth-magic" }) == null);
+    try testing.expect(parseArgs(&.{ "ble-scanner", "--backend=bluetooth-magic" }) == null);
+}
+
+test "parseArgs: a value-taking flag at the end of argv with no value fails" {
+    try testing.expect(parseArgs(&.{ "ble-scanner", "--replay" }) == null);
+    try testing.expect(parseArgs(&.{ "ble-scanner", "--log" }) == null);
+    try testing.expect(parseArgs(&.{ "ble-scanner", "--seconds" }) == null);
+    try testing.expect(parseArgs(&.{ "ble-scanner", "--size" }) == null);
+    try testing.expect(parseArgs(&.{ "ble-scanner", "--backend" }) == null);
+    try testing.expect(parseArgs(&.{ "ble-scanner", "--adapter" }) == null);
+}
+
+test "parseArgs: an unrecognized flag fails the whole parse" {
+    try testing.expect(parseArgs(&.{ "ble-scanner", "--nonsense" }) == null);
+    // Even alongside otherwise-valid flags — nothing partially applies.
+    try testing.expect(parseArgs(&.{ "ble-scanner", "--ascii", "--nonsense" }) == null);
+}
+
 test {
     _ = @import("ble/model.zig");
     _ = @import("ble/replay.zig");
