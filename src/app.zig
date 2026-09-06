@@ -883,7 +883,10 @@ pub const App = struct {
 
     fn histSpark(e: *store_mod.Entry) []const u8 {
         const S = struct {
-            var buf: [128]u8 = undefined;
+            // 48 samples × 3 bytes (block glyphs are U+2581..U+2588, 3 bytes
+            // each in UTF-8) — the old 128-byte buffer silently truncated
+            // the spark to 42 glyphs.
+            var buf: [48 * 3]u8 = undefined;
         };
         const want: u8 = 48;
         var w: usize = 0;
