@@ -164,7 +164,7 @@ pub const LinuxHci = struct {
         switch (pkt[0]) {
             evt_cmd_complete => {
                 // [num_pkts u8, opcode u16 LE, return params (status first)]
-                if (payload.len < 5) return;
+                if (payload.len < 4) return;
                 const opcode = std.mem.readInt(u16, payload[1..3], .little);
                 if ((opcode == opc_le_set_scan_params or
                     opcode == opc_le_set_scan_enable) and payload[3] == 0x00)
