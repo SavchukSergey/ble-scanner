@@ -674,13 +674,18 @@ fn drawSelectionReadout(s: *Screen, entries: []*Entry, sel_idx: usize) void {
     var nm: []const u8 = e.name();
     if (nm.len == 0) nm = model.formatMac(e.addr, &nb);
     var db: [12]u8 = undefined;
+    var sb: [12]u8 = undefined;
     const dist = estDistanceMeters(e);
     const dstr = if (dist < 10)
         std.fmt.bufPrint(&db, "~{d:.1} m", .{dist}) catch ""
     else
         std.fmt.bufPrint(&db, "~{d} m", .{@as(u32, @intFromFloat(dist))}) catch "";
     var rb: [64]u8 = undefined;
-    const line = std.fmt.bufPrint(&rb, "⏎ {s} · {s} · {d} dBm", .{ nm, dstr, e.rssiAvg() }) catch "";
+    const rssi_txt = if (hasRssi(e))
+        (std.fmt.bufPrint(&sb, "{d} dBm", .{e.rssiAvg()}) catch "--")
+    else
+        "--";
+    const line = std.fmt.bufPrint(&rb, "⏎ {s} · {s} · {s}", .{ nm, dstr, rssi_txt }) catch "";
     s.textBounded(2, 1, line, @min(@as(u32, @intCast(line.len)), s.w -| 4), .{ .fg = c_accent, .bold = true });
 }
 
@@ -733,7 +738,7 @@ fn drawNearestPanel(s: *Screen, entries: []*Entry, sel_idx: usize) void {
             const row_st: Style = if (row_sel) .{ .fg = 255, .bg = c_sel_bg, .bold = true } else .{ .fg = c_base };
             if (row_sel) s.fillRect(px, row, 22, 1, row_st);
             s.put(px, row, if (row_sel) '>' else ' ', row_st);
-            s.put(px + 1, row, deviceGlyph(e), .{ .fg = if (row_sel) 255 else rssiColor(e.rssiAvg()), .bg = row_st.bg, .bold = true });
+            s.put(px + 1, row, deviceGlyph(e), .{ .fg = if (row_sel) 255 else (if (hasRssi(e)) rssiColor(e.rssiAvg()) else 240), .bg = row_st.bg, .bold = true });
             var nb: [17]u8 = undefined;
             var nm: []const u8 = e.name();
             if (nm.len == 0) nm = model.formatMac(e.addr, &nb);
@@ -984,4 +989,39 @@ test "tzifUtcOffset finds the v2 block and active gmtoff" {
     // Garbage and truncation fall back to 0 (UTC).
     try std.testing.expectEqual(@as(i64, 0), tzifUtcOffset("not tzif", 0));
     try std.testing.expectEqual(@as(i64, 0), tzifUtcOffset(blob[0..20], 0));
+}
+
+test "radar selection readout hides the no-sample RSSI sentinel" {
+    const testing = std.testing;
+    var s = try Screen.init(testing.allocator, 110, 10);
+    defer s.deinit();
+
+    var e = store.Entry{
+        .key = 1,
+        .addr = .{ 1, 2, 3, 4, 5, 6 },
+        .addr_type = .random,
+        .adv_type = .non_connectable_undirected,
+        .first_ms = 0,
+        .last_ms = 0,
+    }; // rssi_last/min/max keep their sentinel defaults
+    var entries = [_]*Entry{&e};
+    drawSelectionReadout(&s, entries[0..], 0);
+
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    try s.dumpText(&aw.writer);
+    try aw.writer.flush();
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "127 dBm") == null);
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "--") != null);
+
+    // A real sample still renders as dBm.
+    e.rssi_last = -55;
+    e.rssi_sum = -55;
+    e.rssi_n = 1;
+    s.clear();
+    drawSelectionReadout(&s, entries[0..], 0);
+    aw.clearRetainingCapacity();
+    try s.dumpText(&aw.writer);
+    try aw.writer.flush();
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "-55 dBm") != null);
 }

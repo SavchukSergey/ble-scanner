@@ -688,7 +688,13 @@ pub const App = struct {
         self.put(.label, "  Last seen      {s} ago", .{ widgets.fmtAge(now_ms - e.last_ms, &cb) });
 
         self.put(.section, "RADIO", .{});
-        self.put(.label, "  RSSI  now {d}  min {d}  avg {d}  max {d} dBm", .{ e.rssi_last, e.rssi_min, e.rssiAvg(), e.rssi_max });
+        if (widgets.hasRssi(e)) {
+            self.put(.label, "  RSSI  now {d}  min {d}  avg {d}  max {d} dBm", .{ e.rssi_last, e.rssi_min, e.rssiAvg(), e.rssi_max });
+        } else {
+            // Every report carried the stack's "not measured" marker —
+            // printing the sentinels would show "127 / -128 dBm".
+            self.put(.dim, "  RSSI  -- (no valid samples; reports carried 'not measured')", .{});
+        }
         self.put(.text, "  history  {s}", .{histSpark(e)});
 
         if (ad.txPower(secs)) |tx| {
@@ -927,4 +933,34 @@ test "rawSectionValue decodes connection interval range (0x12)" {
     // Too short stays hex for the caller.
     const short = model.AdSection{ .typ = 0x12, .data = &.{ 0x50, 0x00 } };
     try std.testing.expect(App.rawSectionValue(short, &buf) == null);
+}
+
+test "detail view hides RSSI sentinels for no-sample devices" {
+    const testing = std.testing;
+    var store = try store_mod.Store.init(testing.allocator);
+    defer store.deinit();
+    var app = App.init(testing.allocator, &store, "test");
+    defer app.deinit();
+
+    // Every report carried -127 ("not measured") → no valid samples.
+    const ev = try testing.allocator.create(model.AdvEvent);
+    ev.* = .{
+        .addr = .{ 1, 2, 3, 4, 5, 6 },
+        .addr_type = .random,
+        .adv_type = .non_connectable_undirected,
+        .rssi = -127,
+        .ts_ms = 1000,
+    };
+    app.handleAdv(ev);
+
+    const e = store.get(model.addrKey(.{ 1, 2, 3, 4, 5, 6 }, .random)).?;
+    app.buildDetail(e, 2000);
+    var saw_placeholder = false;
+    for (app.detail_lines.items) |l| {
+        if (std.mem.indexOf(u8, l.text, "-- (no valid samples") != null) saw_placeholder = true;
+        // The sentinel garbage must not leak into any rendered line.
+        try testing.expect(std.mem.indexOf(u8, l.text, "127") == null);
+        try testing.expect(std.mem.indexOf(u8, l.text, "-128") == null);
+    }
+    try testing.expect(saw_placeholder);
 }
