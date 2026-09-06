@@ -793,6 +793,17 @@ pub const App = struct {
                 if (sec.data.len < 1) return null;
                 return std.fmt.bufPrint(buf, "{d} dBm", .{@as(i8, @bitCast(sec.data[0]))}) catch null;
             },
+            0x12 => { // peripheral connection interval range: 2 × u16 LE, 1.25 ms units
+                if (sec.data.len < 4) return null;
+                const lo = std.mem.readInt(u16, sec.data[0..2], .little);
+                const hi = std.mem.readInt(u16, sec.data[2..4], .little);
+                const lo_x10: u32 = @as(u32, lo) * 125 / 10;
+                if (hi == 0xFFFF) { // GAP: no specific maximum
+                    return std.fmt.bufPrint(buf, "{d}.{d} ms - no max", .{ lo_x10 / 10, lo_x10 % 10 }) catch null;
+                }
+                const hi_x10: u32 = @as(u32, hi) * 125 / 10;
+                return std.fmt.bufPrint(buf, "{d}.{d} - {d}.{d} ms", .{ lo_x10 / 10, lo_x10 % 10, hi_x10 / 10, hi_x10 % 10 }) catch null;
+            },
             0x19 => { // appearance
                 if (sec.data.len < 2) return null;
                 const ap = std.mem.readInt(u16, sec.data[0..2], .little);
@@ -904,3 +915,16 @@ pub const App = struct {
         return S.buf[0..w];
     }
 };
+
+test "rawSectionValue decodes connection interval range (0x12)" {
+    var buf: [160]u8 = undefined;
+    // Real capture (wild16, YUNMAI scale): 0x0050..0x0320 units of 1.25 ms.
+    const sec = model.AdSection{ .typ = 0x12, .data = &.{ 0x50, 0x00, 0x20, 0x03 } };
+    try std.testing.expectEqualStrings("100.0 - 1000.0 ms", App.rawSectionValue(sec, &buf).?);
+    // 0xFFFF max = "no specific maximum" per GAP.
+    const no_max = model.AdSection{ .typ = 0x12, .data = &.{ 0x18, 0x00, 0xFF, 0xFF } };
+    try std.testing.expectEqualStrings("30.0 ms - no max", App.rawSectionValue(no_max, &buf).?);
+    // Too short stays hex for the caller.
+    const short = model.AdSection{ .typ = 0x12, .data = &.{ 0x50, 0x00 } };
+    try std.testing.expect(App.rawSectionValue(short, &buf) == null);
+}

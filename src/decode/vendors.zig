@@ -148,7 +148,14 @@ fn decodeAppleTlv(t: u8, body: []const u8, w: *std.Io.Writer) bool {
                     0x7218 => "AirDrop nearby",
                     else => "",
                 };
-                w.print("action           0x{X:0>4} {s}\n", .{ action, action_name }) catch {};
+                if (action_name.len > 0) {
+                    w.print("action           0x{X:0>4} {s}\n", .{ action, action_name }) catch {};
+                } else {
+                    // Codes outside the known table (e.g. 0x3C1A observed
+                    // in the wild on 319 consecutive events) used to print
+                    // a dangling empty name — say so instead.
+                    w.print("action           0x{X:0>4} (unrecognized action)\n", .{action}) catch {};
+                }
                 if (body.len > 2) {
                     var hex: [24]u8 = undefined;
                     w.print("auth tag         {s}\n", .{hexOf(body[2..], &hex)}) catch {};
@@ -839,3 +846,15 @@ test "decode xiaomi sensor objects" {
 // Eddystone TLM/UID coverage lives in classify.zig's tests now — see
 // "parse eddystone tlm at the minimum on-air length" (decodeEddystone was
 // removed from here; see the comment above decodeSvcData's dispatch).
+
+test "decode apple nearby action with unrecognized code" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    // Real capture (wild16): type 0x10 Nearby Action with action code
+    // 0x3C1A, not in the known table — must say so, not print a dangling
+    // empty name.
+    const payload = [_]u8{ 0x10, 0x06, 0x3C, 0x1A, 0xA9, 0x98, 0x49, 0x8A };
+    try testing.expect(decodeApple(&payload, &aw.writer));
+    try aw.writer.flush();
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "0x3C1A (unrecognized action)") != null);
+}

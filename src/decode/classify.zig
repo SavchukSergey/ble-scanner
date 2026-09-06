@@ -311,3 +311,15 @@ test "company hints from generated tables" {
     };
     try testing.expectEqualStrings("Apple, Inc.", companyHint(&apple).?);
 }
+
+test "classify samsung tv beacon with no advertised name" {
+    // Real capture (wild16): company 0x0075, payload type 0x42, no name in
+    // any frame — the name-prefix TV rules can't fire, this used to fall
+    // through to .unknown.
+    const secs = [_]model.AdSection{
+        .{ .typ = 0xFF, .data = &[_]u8{ 0x75, 0x00, 0x42, 0x04, 0x01, 0x80, 0x60, 0xE4, 0x7D, 0xBD, 0x1D, 0xFF, 0xB5, 0xE6, 0x7D, 0xBD, 0x1D, 0xFF, 0xB4, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 } },
+    };
+    const m = classify(&secs, "");
+    try testing.expectEqual(Kind.tv, m.kind);
+    try testing.expectEqualStrings("Samsung TV", m.detail.?);
+}

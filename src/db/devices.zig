@@ -157,6 +157,10 @@ pub const rules = [_]Rule{
     .{ .name_prefix = "55\" Crystal", .kind = .tv, .detail = "Samsung TV" },
     .{ .name_prefix = "The Frame", .kind = .tv, .detail = "Samsung TV" },
     .{ .name_prefix = "QLED", .kind = .tv, .detail = "Samsung TV" },
+    // Samsung TV manufacturer beacon (0x0075, payload type 0x42) —
+    // observed on air with NO advertised name (NonConnectableUndirected
+    // frames only), so the name rules above never fire (wild16 capture).
+    .{ .company = 0x0075, .prefix = &.{0x42}, .kind = .tv, .detail = "Samsung TV" },
 
     // Known wearable vendors (no appearance/service hints needed).
     .{ .company = 0x0087, .kind = .watch, .detail = "Garmin" },
