@@ -141,23 +141,21 @@ const Runner = struct {
             .win_rt => |w| {
                 w.stop();
                 self.thread.join();
-                // Intentionally leak w: a Received callback can still be
-                // in flight on a WinRT threadpool thread (remove_Received
-                // does not drain invocations), and it dereferences ctx
-                // (gpa/io/bus). Freeing here is a shutdown use-after-free;
-                // the process is exiting. Bus pushes stay safe after
-                // deinit via its shutdown flag.
+                // Nothing to free: the struct is page-allocated precisely
+                // so it can outlive this call — a Received callback may
+                // still be in flight on a WinRT threadpool thread
+                // (remove_Received does not drain invocations) and
+                // dereferences it. Bus pushes stay safe after deinit via
+                // its shutdown flag; AdvEvent allocations flow through
+                // .gpa and are freed by the bus/store paths.
             },
             .linux_hci => |h| {
                 h.stop();
                 // The blocked read may not wake on close on all kernels;
-                // detach and let process exit clean up.
+                // detach and let process exit clean up. The struct is
+                // page-allocated, so the detached reader may safely touch
+                // it afterwards — nothing to free here.
                 self.thread.detach();
-                // Intentionally leak h here: the detached reader may still
-                // be blocked in read() and will touch the struct once it
-                // wakes — freeing it now is a shutdown use-after-free. The
-                // process is exiting; a few hundred leaked bytes are the
-                // cheap option.
             },
         }
     }
@@ -190,7 +188,7 @@ fn startRunner(io: std.Io, gpa: std.mem.Allocator, b: *bus_mod.Bus, opts: Option
             const w = try win_rt_mod.WinRt.spawn(gpa, io, b);
             const t = std.Thread.spawn(.{}, winRtThreadMain, .{w}) catch |e| {
                 w.stop();
-                gpa.destroy(w);
+                w.destroy();
                 return e;
             };
             return .{ .impl = .{ .win_rt = w }, .thread = t };
@@ -202,7 +200,7 @@ fn startRunner(io: std.Io, gpa: std.mem.Allocator, b: *bus_mod.Bus, opts: Option
             };
             const t = std.Thread.spawn(.{}, linuxHciThreadMain, .{h}) catch |e| {
                 h.stop();
-                gpa.destroy(h);
+                h.destroy();
                 return e;
             };
             return .{ .impl = .{ .linux_hci = h }, .thread = t };

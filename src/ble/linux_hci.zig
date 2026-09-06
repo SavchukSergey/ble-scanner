@@ -83,9 +83,20 @@ pub const LinuxHci = struct {
             else => error.SocketFailed,
         };
 
-        const self = try gpa.create(LinuxHci);
+        // Page-allocated like WinRt: the reader thread is detached on
+        // stop (a blocked HCI read may never wake on close on some
+        // kernels) and can touch the struct after we return, so the
+        // memory must outlive shutdown. page_allocator is untracked by
+        // the debug allocator, keeping Debug exits clean.
+        const self = std.heap.page_allocator.create(LinuxHci) catch return error.OutOfMemory;
         self.* = .{ .gpa = gpa, .io = io, .b = b, .fd = try fd };
         return self;
+    }
+
+    /// Free the struct. Only valid on early-error paths where the reader
+    /// thread was never started.
+    pub fn destroy(self: *LinuxHci) void {
+        std.heap.page_allocator.destroy(self);
     }
 
     pub fn hint(e: SpawnError) []const u8 {

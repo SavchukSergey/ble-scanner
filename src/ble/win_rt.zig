@@ -304,8 +304,16 @@ pub const WinRt = struct {
         if (builtin.os.tag != .windows) return error.NotSupported;
         if (!comapi.ensure()) return error.WinRtNotAvailable;
 
-        const self = try gpa.create(WinRt);
-        errdefer gpa.destroy(self);
+        // The struct is page-allocated and intentionally never freed on
+        // the normal stop path: a Received callback can still be in flight
+        // on a WinRT threadpool thread when the app quits (remove_Received
+        // does not drain invocations) and it dereferences this struct, so
+        // the memory must stay valid until process death. page_allocator
+        // memory is not tracked by the debug allocator's leak check, so
+        // Debug builds exit clean; everything the struct allocates via
+        // .gpa (AdvEvents) is still freed through the bus/store paths.
+        const self = std.heap.page_allocator.create(WinRt) catch return error.OutOfMemory;
+        errdefer std.heap.page_allocator.destroy(self);
         self.* = .{ .gpa = gpa, .io = io, .b = b };
 
         _ = comapi.pCoInitializeEx.?(null, 0);
@@ -334,6 +342,12 @@ pub const WinRt = struct {
             return error.QIFailed;
         self.watcher = w.?;
         return self;
+    }
+
+    /// Free the struct. Only valid on the early-error paths where no
+    /// callback can exist yet (thread spawn failed before threadMain).
+    pub fn destroy(self: *WinRt) void {
+        std.heap.page_allocator.destroy(self);
     }
 
     pub fn threadMain(self: *WinRt) void {
