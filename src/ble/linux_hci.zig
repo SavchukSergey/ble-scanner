@@ -208,7 +208,7 @@ pub const LinuxHci = struct {
             const rssi: i8 = @bitCast(body[p + dlen]);
             p += dlen + 1;
 
-            self.emit(addr, addr_type, evt_type, rssi, null, data);
+            self.emit(addr, addr_type, model.AdvType.fromHci(evt_type) orelse return, rssi, null, data);
         }
     }
 
@@ -223,7 +223,9 @@ pub const LinuxHci = struct {
             // data_len u8, data
             if (p + 24 > body.len) return; // header before data: 2+1+6+1+1+1+1+1+2+1+6+1 = 24
             const evt_type = std.mem.readInt(u16, body[p..][0..2], .little);
-            const addr_type = body[p + 2] & 0x03;
+            // Bits 0-1: 0x00/0x02 public, 0x01/0x03 random (2|3 = identity
+            // addresses) — only bit 0 decides public vs random.
+            const addr_type = body[p + 2] & 0x01;
             var addr: [6]u8 = undefined;
             for (0..6) |k| addr[k] = body[p + 3 + 5 - k];
             const tx: i8 = @bitCast(body[p + 12]);
@@ -234,16 +236,16 @@ pub const LinuxHci = struct {
             const data = body[p .. p + dlen];
             p += dlen;
 
-            self.emit(addr, addr_type, evt_type, rssi, tx, data);
+            // Extended reports carry a bit-field evt_type, not the legacy
+            // 0-4 enum — including for legacy PDUs (bit 4 set).
+            // extAdvType() decodes both; AdvType.fromHci must never be used
+            // here: non-legacy reports legitimately have evt_type 0-4 and
+            // would be misread through the legacy enum.
+            self.emit(addr, addr_type, extAdvType(evt_type) orelse return, rssi, tx, data);
         }
     }
 
-    fn emit(self: *LinuxHci, addr: [6]u8, addr_type: u8, evt_type_raw: u16, rssi: i8, tx: ?i8, data: []const u8) void {
-        const adv_type: model.AdvType = if (evt_type_raw <= 4)
-            model.AdvType.fromHci(@intCast(evt_type_raw)) orelse return
-        else
-            extAdvType(evt_type_raw) orelse return;
-
+    fn emit(self: *LinuxHci, addr: [6]u8, addr_type: u8, adv_type: model.AdvType, rssi: i8, tx: ?i8, data: []const u8) void {
         // Split + extract name first (into stack views), then allocate one
         // backing blob for name + section payloads — same layout as replay.
         var views: [32]ad.SecView = undefined;
@@ -358,3 +360,74 @@ test "extAdvType bits" {
 // parse+emit path requires the full struct; instead we validate the raw
 // report walker indirectly through handleEvent — covered by the splitSections
 // test plus manual capture replay on hardware (see ARCHITECTURE.md).
+
+test "command complete for LE Set Scan Enable is honored (plen 4)" {
+    // Real on-air shape: HCI Event 0x0E, plen 4 = num_cmd_pkts(1) + opcode(2)
+    // + status(1). LE Set Scan Enable opcode 0x200C, status 0x00.
+    var bus = bus_mod.Bus.init(std.testing.io, testing.allocator);
+    defer bus.deinit();
+    var h = LinuxHci{ .gpa = testing.allocator, .io = std.testing.io, .b = &bus, .fd = @ptrFromInt(@as(usize, 0xDEADBEEF)) };
+
+    const ok = [_]u8{ 0x0E, 0x04, 0x01, 0x0C, 0x20, 0x00 };
+    h.handleEvent(&ok);
+    try testing.expectEqual(@as(usize, 1), bus.pending()); // .started
+    var evs: std.ArrayList(bus_mod.Event) = .empty;
+    defer evs.deinit(testing.allocator);
+    bus.popAll(&evs);
+    try testing.expect(evs.items[0] == .backend and evs.items[0].backend.code == .started);
+
+    // Failure status (0x0C = Command Disallowed) must be surfaced.
+    var bus2 = bus_mod.Bus.init(std.testing.io, testing.allocator);
+    defer bus2.deinit();
+    var h2 = LinuxHci{ .gpa = testing.allocator, .io = std.testing.io, .b = &bus2, .fd = @ptrFromInt(@as(usize, 0xDEADBEEF)) };
+    const fail = [_]u8{ 0x0E, 0x04, 0x01, 0x0C, 0x20, 0x0C };
+    h2.handleEvent(&fail);
+    try testing.expect(h2.stopped.load(.acquire));
+    try testing.expectEqual(@as(usize, 1), bus2.pending()); // .failed
+}
+
+test "extended report: non-legacy evt_type 0 stays non-connectable, random identity maps to random" {
+    // LE Meta 0x3E, subevent 0x0D, 1 report, evt_type 0x0000 (non-legacy,
+    // non-connectable — the most common extended beacon), addr_type 0x03
+    // (random identity), one AD section 02 01 06.
+    var bus = bus_mod.Bus.init(std.testing.io, testing.allocator);
+    defer bus.deinit();
+    var h = LinuxHci{ .gpa = testing.allocator, .io = std.testing.io, .b = &bus, .fd = @ptrFromInt(@as(usize, 0xDEADBEEF)) };
+
+    var pkt: [2 + 1 + 1 + 24 + 3]u8 = @splat(0);
+    pkt[0] = 0x3E;
+    pkt[1] = @intCast(pkt.len - 2);
+    pkt[2] = 0x0D; // LE extended advertising report
+    pkt[3] = 1; // num reports
+    // report begins at 4
+    pkt[4] = 0x00; // evt_type lo
+    pkt[5] = 0x00; // evt_type hi
+    pkt[6] = 0x03; // addr_type: random identity
+    const le_addr = [_]u8{ 0x11, 0x22, 0x33, 0x44, 0x55, 0x66 };
+    @memcpy(pkt[7..13], &le_addr);
+    pkt[16] = 0xFF; // tx power = -1
+    pkt[17] = @bitCast(@as(i8, -70)); // rssi
+    pkt[27] = 3; // data_len
+    pkt[28] = 0x02;
+    pkt[29] = 0x01;
+    pkt[30] = 0x06;
+    h.handleEvent(&pkt);
+
+    var evs: std.ArrayList(bus_mod.Event) = .empty;
+    defer {
+        for (evs.items) |ev| switch (ev) {
+            .adv => |a| a.deinit(testing.allocator),
+            else => {},
+        };
+        evs.deinit(testing.allocator);
+    }
+    bus.popAll(&evs);
+    try testing.expectEqual(@as(usize, 1), evs.items.len);
+    const a = evs.items[0].adv;
+    try testing.expectEqual(model.AdvType.non_connectable_undirected, a.adv_type);
+    try testing.expectEqual(model.AddrType.random, a.addr_type);
+    try testing.expectEqualSlices(u8, &.{ 0x66, 0x55, 0x44, 0x33, 0x22, 0x11 }, &a.addr);
+    try testing.expectEqual(@as(i8, -70), a.rssi);
+    try testing.expectEqual(@as(i8, -1), a.tx_power.?);
+    try testing.expectEqual(@as(usize, 1), a.sections.len);
+}
