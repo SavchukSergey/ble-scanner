@@ -284,18 +284,21 @@ fn runCapture(io: std.Io, gpa: std.mem.Allocator, opts: Options) !u8 {
         return 2;
     };
 
+    // Open the log file BEFORE starting the backend: on failure there is
+    // no runner to stop (the old order left the capture thread running
+    // because errdefer does not fire on plain `return 1` paths).
+    var log_file = std.Io.Dir.cwd().createFile(io, log_path, .{}) catch |e| {
+        try errPrint(io, "error: cannot open log file '{s}': {t}\n", .{ log_path, e });
+        return 1;
+    };
+    defer log_file.close(io);
+
     var bus = bus_mod.Bus.init(io, gpa);
     var runner = startRunner(io, gpa, &bus, opts) catch |e| {
         try errPrint(io, "error: cannot start backend: {t}\n", .{e});
         return 1;
     };
     errdefer runner.stop();
-
-    var log_file = std.Io.Dir.cwd().createFile(io, log_path, .{}) catch |e| {
-        try errPrint(io, "error: cannot open log file '{s}': {t}\n", .{ log_path, e });
-        return 1;
-    };
-    defer log_file.close(io);
 
     var n_events: usize = 0;
     var n_devices: usize = 0;
