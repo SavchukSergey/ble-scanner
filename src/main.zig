@@ -148,7 +148,11 @@ const Runner = struct {
                 // The blocked read may not wake on close on all kernels;
                 // detach and let process exit clean up.
                 self.thread.detach();
-                h.gpa.destroy(h);
+                // Intentionally leak h here: the detached reader may still
+                // be blocked in read() and will touch the struct once it
+                // wakes — freeing it now is a shutdown use-after-free. The
+                // process is exiting; a few hundred leaked bytes are the
+                // cheap option.
             },
         }
     }
