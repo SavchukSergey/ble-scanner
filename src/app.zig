@@ -622,7 +622,15 @@ pub const App = struct {
 
     fn put(self: *App, kind: widgets.LineKind, comptime fmt: []const u8, args: anytype) void {
         if (self.detail_lines.items.len >= detail_line_cap) return;
-        var tmp: [480]u8 = undefined;
+        // Worst case is the RAW ADVERTISING DATA line: "  0x" + 2 hex
+        // digits + " " + longest ad.sectionName() ("Peripheral connection
+        // interval range", 37 chars — the {s:<28} pad only grows for a
+        // longer name, it never truncates) + " " + a full-size classic AD
+        // structure as hex (254 bytes payload max -> 508 chars, hexbuf is
+        // 512) = ~557 bytes. The old 480-byte buffer silently dropped that
+        // line entirely (bufPrint failure -> empty string) for any section
+        // over ~222 bytes, well within the legal single-AD-structure max.
+        var tmp: [600]u8 = undefined;
         const str = std.fmt.bufPrint(&tmp, fmt, args) catch tmp[0..0];
         if (self.detail_txt.items.len + str.len > detail_txt_cap) return;
         const start = self.detail_txt.items.len;
@@ -963,4 +971,45 @@ test "detail view hides RSSI sentinels for no-sample devices" {
         try testing.expect(std.mem.indexOf(u8, l.text, "-128") == null);
     }
     try testing.expect(saw_placeholder);
+}
+
+test "raw advertising data line survives a full-size AD section" {
+    const testing = std.testing;
+    var store = try store_mod.Store.init(testing.allocator);
+    defer store.deinit();
+    var app = App.init(testing.allocator, &store, "test");
+    defer app.deinit();
+
+    // Largest legal classic AD structure: the 1-byte Length field maxes
+    // at 255, minus 1 for the type byte = 254 bytes of payload -> 508 hex
+    // chars. Use an unrecognized type (0xF0) so ad.sectionName() falls
+    // back to "-" — even that shortest-possible name field already
+    // overflowed the old 480-byte line buffer at this data size.
+    var big: [254]u8 = undefined;
+    for (&big, 0..) |*b, i| b.* = @truncate(i);
+    const secs = [_]model.AdSection{.{ .typ = 0xF0, .data = &big }};
+
+    const ev = try testing.allocator.create(model.AdvEvent);
+    ev.* = .{
+        .addr = .{ 9, 9, 9, 9, 9, 9 },
+        .addr_type = .random,
+        .adv_type = .connectable_undirected,
+        .rssi = -50,
+        .sections = testing.allocator.dupe(model.AdSection, &secs) catch unreachable,
+        .ts_ms = 1000,
+    };
+    app.handleAdv(ev);
+
+    const e = store.get(model.addrKey(.{ 9, 9, 9, 9, 9, 9 }, .random)).?;
+    app.buildDetail(e, 2000);
+
+    var found = false;
+    for (app.detail_lines.items) |l| {
+        if (std.mem.indexOf(u8, l.text, "0xF0") != null) {
+            found = true;
+            // All 254 bytes (508 hex chars) must be present, not dropped.
+            try testing.expect(l.text.len > 508);
+        }
+    }
+    try testing.expect(found);
 }
