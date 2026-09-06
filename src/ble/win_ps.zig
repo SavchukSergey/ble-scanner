@@ -17,6 +17,11 @@ pub const WinPs = struct {
     b: *bus_mod.Bus,
     child: std.process.Child,
 
+    /// Handle of the stderr drain thread (joined in stop()). Kept — not
+    /// detached — so the struct is never freed while the drain thread is
+    /// still inside copyErr()/readStreaming().
+    stderr_thread: ?std.Thread = null,
+
     /// Set by the stderr drain thread; surfaced on failure.
     err_buf: [1024]u8 = @splat(0),
     err_len: usize = 0,
@@ -57,7 +62,7 @@ pub const WinPs = struct {
             gpa.destroy(self);
             return e;
         };
-        t.detach();
+        self.stderr_thread = t;
 
         return self;
     }
@@ -143,9 +148,16 @@ pub const WinPs = struct {
         }
     }
 
-    /// Kill the child process (called on app exit).
+    /// Kill the child process and join both reader threads (called on app
+    /// exit). Joining the stderr drain is what makes it safe to free the
+    /// WinPs afterwards — the drain used to be detached, leaving a window
+    /// where it locked a mutex inside the already-destroyed struct.
     pub fn stop(self: *WinPs) void {
         self.child.kill(self.io);
+        if (self.stderr_thread) |t| {
+            t.join();
+            self.stderr_thread = null;
+        }
     }
 };
 
