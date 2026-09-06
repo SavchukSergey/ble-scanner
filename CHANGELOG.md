@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-06
+
+### Added
+- Samsung TVs that beacon only their manufacturer payload (no advertised
+  name) now classify as TVs instead of "unknown".
+- Apple Nearby Action codes outside the known table show
+  "(unrecognized action)" instead of a blank label.
+- Peripheral connection-interval advertisements decode to their
+  millisecond range in the detail view.
+
+### Changed
+- Release binaries are stripped by default — the Linux ELF is ~6.5x smaller.
+- Wider COMPANY and TYPE columns in the device list.
+
+### Fixed
+- Linux: the backend never surfaced its started/failed state (Command
+  Complete length off-by-one), silently hiding scan-start failures.
+- Linux: extended advertising reports were decoded through the legacy
+  PDU-type table, so ordinary extended beacons showed as connectable;
+  random-identity addresses were stored as public, splitting one device
+  into two entries.
+- Linux: extended advertising reports with empty payloads were dropped.
+- Linux: timestamps rendered in UTC instead of local time (timezone-file
+  parser read header fields at the wrong offsets).
+- Shift/Ctrl/Alt + arrow keys no longer lose the keypress or leak stray
+  characters into the filter editor.
+- Drawing the radar/map view no longer reorders the nearest-device panel
+  as a side effect.
+- The SLAM map keeps tracking devices after 60 distinct addresses have
+  been seen.
+- Captures recorded with `--log` no longer silently truncate payload
+  sections larger than 1 KiB.
+- The detail-view RSSI history shows all 48 samples (was silently cut to 42).
+
 ## [0.2.0] - 2026-09-05
 
 ### Added
