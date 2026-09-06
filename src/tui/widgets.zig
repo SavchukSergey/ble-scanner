@@ -125,32 +125,36 @@ fn linuxUtcOffset(now_s: i64) i64 {
     const io = threaded.io();
     const file = std.Io.Dir.cwd().openFile(io, "/etc/localtime", .{}) catch return 0;
     defer file.close(io);
-    var fbuf: [4096]u8 = undefined;
+    var fbuf: [16384]u8 = undefined;
     const n = file.readStreaming(io, &.{fbuf[0..]}) catch return 0;
-    const data = fbuf[0..n];
+    return tzifUtcOffset(fbuf[0..n], now_s);
+}
 
-    // TZif v2 header: magic(4) ver(1) pad(15) then counts:
-    // isutcnt(4) isstdcnt(4) leapcnt(4) timecnt(4) typecnt(4) charcnt(4)
+/// Parse a TZif image and return the UTC offset (seconds) active at
+/// `now_s`. Header field order per RFC 8536 §3.1:
+///   magic(4) version(1) reserved(15) isutcnt isstdcnt leapcnt timecnt
+///   typecnt charcnt — all big-endian u32, header is 44 bytes.
+fn tzifUtcOffset(data: []const u8, now_s: i64) i64 {
     if (data.len < 44 or !std.mem.eql(u8, data[0..4], "TZif")) return 0;
-    const timecnt = std.mem.readInt(u32, data[20..24], .big);
-    const typecnt = std.mem.readInt(u32, data[24..28], .big);
+    const isutcnt = std.mem.readInt(u32, data[20..24], .big);
+    const isstdcnt = std.mem.readInt(u32, data[24..28], .big);
+    const leapcnt = std.mem.readInt(u32, data[28..32], .big);
+    const timecnt = std.mem.readInt(u32, data[32..36], .big);
+    const typecnt = std.mem.readInt(u32, data[36..40], .big);
+    const charcnt = std.mem.readInt(u32, data[40..44], .big);
     if (typecnt == 0 or timecnt == 0) return 0;
 
     // v2 block starts after the v1 data block; find it by the second magic.
-    var v2_off: usize = 44;
-    // v1 data size: timecnt*4 + timecnt*1 + typecnt*6 + charcnt + leapcnt*8 + isstdcnt + isutcnt
-    const isutcnt = std.mem.readInt(u32, data[12..16], .big);
-    const isstdcnt = std.mem.readInt(u32, data[16..20], .big);
-    const leapcnt = std.mem.readInt(u32, data[28..32], .big);
-    const charcnt = std.mem.readInt(u32, data[32..36], .big);
-    const v1_size = 44 + @as(usize, timecnt) * 4 + timecnt + @as(usize, typecnt) * 6 + charcnt + @as(usize, leapcnt) * 8 + isstdcnt + isutcnt;
-    if (v1_size >= data.len) return 0;
-    v2_off = v1_size;
+    // v1 data size: timecnt*4 + timecnt*1 + typecnt*6 + charcnt +
+    // leapcnt*8 + isstdcnt + isutcnt.
+    const v1_size = 44 + @as(usize, timecnt) * 4 + timecnt + @as(usize, typecnt) * 6 +
+        @as(usize, charcnt) + @as(usize, leapcnt) * 8 + isstdcnt + isutcnt;
+    const v2_off: usize = v1_size;
     if (v2_off + 44 > data.len or !std.mem.eql(u8, data[v2_off .. v2_off + 4], "TZif")) return 0;
 
-    // v2 counts
-    const v2_timecnt = std.mem.readInt(u32, data[v2_off + 20 ..][0..4], .big);
-    const v2_typecnt = std.mem.readInt(u32, data[v2_off + 24 ..][0..4], .big);
+    // v2 counts (same header layout as v1).
+    const v2_timecnt = std.mem.readInt(u32, data[v2_off + 32 ..][0..4], .big);
+    const v2_typecnt = std.mem.readInt(u32, data[v2_off + 36 ..][0..4], .big);
     if (v2_timecnt == 0 or v2_typecnt == 0) return 0;
 
     const trans_off = v2_off + 44;
@@ -957,4 +961,27 @@ pub fn drawHelpOverlay(s: *Screen) void {
         s.textBounded(x + 14, yy, r[1], bw -| 16, .{ .fg = c_base, .bg = 235 });
         yy += 1;
     }
+}
+
+test "tzifUtcOffset finds the v2 block and active gmtoff" {
+    // Synthetic TZif: v1 block (59 bytes) + v2 block with one transition at
+    // t=0 to a ttinfo with gmtoff 10800 (UTC+3) + footer. Regression for a
+    // header-field mixup (isutcnt/isstdcnt read where timecnt/typecnt were
+    // expected) that made the v2 magic never be found and every Linux clock
+    // render fall back to UTC.
+    const blob = [_]u8{
+        84,90,105,102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
+        0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,4,0,0,0,0,
+        0,0,0,28,32,0,0,69,69,84,0,0,0,84,90,105,102,50,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,2,0,0,0,0,0,0,0,
+        1,0,0,0,2,0,0,0,8,0,0,0,0,0,0,0,0,1,0,0,28,32,0,0,
+        0,0,42,48,1,4,69,69,84,0,69,69,83,84,0,0,0,0,0,10,84,90,102,111,
+        111,116,101,114,10,
+    };
+    try std.testing.expectEqual(@as(i64, 10800), tzifUtcOffset(&blob, 1_700_000_000));
+    // Before the transition: falls back to type 0 (gmtoff 7200).
+    try std.testing.expectEqual(@as(i64, 10800), tzifUtcOffset(&blob, 0));
+    // Garbage and truncation fall back to 0 (UTC).
+    try std.testing.expectEqual(@as(i64, 0), tzifUtcOffset("not tzif", 0));
+    try std.testing.expectEqual(@as(i64, 0), tzifUtcOffset(blob[0..20], 0));
 }
