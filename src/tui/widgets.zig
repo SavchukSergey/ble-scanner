@@ -635,7 +635,9 @@ pub fn drawRadar(s: *Screen, entries: []*Entry, sel_idx: usize, now_ms: i64) voi
     }
 
     // You.
-    s.put(@intFromFloat(cx), @intFromFloat(cy), if (screen_mod.ascii) '@' else '⌖', .{ .fg = 255, .bold = true });
+    const ccx: u32 = @intFromFloat(cx);
+    const ccy: u32 = @intFromFloat(cy);
+    s.put(ccx, ccy, if (screen_mod.ascii) '@' else '⌖', .{ .fg = 255, .bold = true });
 
     // Devices (input order is nearest-first; the selected entry gets
     // bracket markers).
@@ -653,6 +655,14 @@ pub fn drawRadar(s: *Screen, entries: []*Entry, sel_idx: usize, now_ms: i64) voi
         // Nudge once on collision with another glyph.
         if (isGlyph(s, x, y)) x += 1;
         if (isGlyph(s, x, y)) x -|= 2;
+        // estDistanceMeters() clamps to a 0.3 m floor, which is exactly
+        // ringR's zero-radius reference point, so any device that close
+        // lands on (ccx, ccy) at r=0. isGlyph() only recognizes A-Z/0-9 —
+        // it doesn't know about ⌖/@ — so the collision nudge above never
+        // triggers for this case. Push it a full 2 cells clear of center
+        // (not just 1) so the selection bracket at x-1, drawn below when
+        // this device is selected, doesn't land back on the marker.
+        if (x == ccx and y == ccy) x = @min(ccx + 2, s.w -| 1);
         if (selected) {
             s.put(x -| 1, y, '[', .{ .fg = c_accent, .bold = true });
             s.put(x + 1, y, ']', .{ .fg = c_accent, .bold = true });
@@ -1024,4 +1034,39 @@ test "radar selection readout hides the no-sample RSSI sentinel" {
     try s.dumpText(&aw.writer);
     try aw.writer.flush();
     try testing.expect(std.mem.indexOf(u8, aw.written(), "-55 dBm") != null);
+}
+
+test "radar center marker survives a device clamped to the minimum distance" {
+    // Real capture (wild9): a device with a very strong RSSI relative to
+    // its (fallback) tx power clamps to estDistanceMeters()'s 0.3 m
+    // floor, which is exactly ringR's zero-radius reference point
+    // (log(0.3/0.3) = 0) — it lands dead on the "you are here" cell.
+    // isGlyph()'s collision check only recognizes A-Z/0-9, not ⌖/@, so
+    // without a dedicated check that device's glyph silently erased the
+    // center marker every frame — --selftest against wild9.jsonl caught
+    // this as "radar center/rings not rendered".
+    const testing = std.testing;
+    var s = try Screen.init(testing.allocator, 110, 30);
+    defer s.deinit();
+
+    var e = store.Entry{
+        .key = 42,
+        .addr = .{ 1, 2, 3, 4, 5, 6 },
+        .addr_type = .random,
+        .adv_type = .connectable_undirected,
+        .first_ms = 0,
+        .last_ms = 0,
+        .rssi_last = 0,
+        .rssi_sum = 0,
+        .rssi_n = 1,
+    };
+    var entries = [_]*Entry{&e};
+    drawRadar(&s, entries[0..], 0, 0);
+
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    try s.dumpText(&aw.writer);
+    try aw.writer.flush();
+    try testing.expect(std.mem.indexOfScalar(u8, aw.written(), '@') != null or
+        std.mem.indexOf(u8, aw.written(), "⌖") != null);
 }
