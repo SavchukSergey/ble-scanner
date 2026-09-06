@@ -141,7 +141,12 @@ const Runner = struct {
             .win_rt => |w| {
                 w.stop();
                 self.thread.join();
-                w.gpa.destroy(w);
+                // Intentionally leak w: a Received callback can still be
+                // in flight on a WinRT threadpool thread (remove_Received
+                // does not drain invocations), and it dereferences ctx
+                // (gpa/io/bus). Freeing here is a shutdown use-after-free;
+                // the process is exiting. Bus pushes stay safe after
+                // deinit via its shutdown flag.
             },
             .linux_hci => |h| {
                 h.stop();
