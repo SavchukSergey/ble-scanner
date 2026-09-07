@@ -342,3 +342,11 @@ test "classify unnamed YUNMAI-family scale by service signature" {
     const named = classify(&secs, "YUNMAI-ISSE-US");
     try testing.expectEqualStrings("YUNMAI smart scale", named.detail.?);
 }
+
+test "classify galaxy fit band by name" {
+    // Real capture (wild21): name "Galaxy Fit3 (DB7A)", svc 0xFD69 +
+    // 0x180D — the SmartThings rule alone labels it a tracker tag.
+    const m = classify(&.{}, "Galaxy Fit3 (DB7A)");
+    try testing.expectEqual(Kind.band, m.kind);
+    try testing.expectEqualStrings("Samsung Galaxy Fit", m.detail.?);
+}

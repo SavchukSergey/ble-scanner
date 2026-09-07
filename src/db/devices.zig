@@ -108,6 +108,23 @@ pub const rules = [_]Rule{
     .{ .company = 0x004C, .prefix = &.{0x12}, .kind = .continuity, .detail = "Find My nearby" },
     .{ .company = 0x004C, .kind = .continuity },
 
+    // Name-identifiable devices — checked BEFORE the framework/service
+    // rules so a specific name beats a generic Fast Pair / SmartThings /
+    // Xiaomi label (a named "Galaxy Fit3" is a band, not a tracker tag;
+    // "Galaxy Buds" are headphones, not "Fast Pair").
+    .{ .name_prefix = "WHOOP", .kind = .band, .detail = "WHOOP fitness band" },
+    .{ .name_prefix = "Mi Smart Band", .kind = .band, .detail = "Mi Band" },
+    .{ .name_prefix = "Mi Band", .kind = .band, .detail = "Mi Band" },
+    .{ .name_prefix = "Amazfit", .kind = .band, .detail = "Amazfit" },
+    .{ .name_prefix = "Galaxy Watch", .kind = .watch, .detail = "Samsung Galaxy Watch" },
+    .{ .name_prefix = "Galaxy Buds", .kind = .headphones, .detail = "Galaxy Buds" },
+    // Galaxy Fit bands (wild21: "Galaxy Fit3 (DB7A)") — their 0xFD69
+    // SmartThings beacon otherwise labels them a generic tracker tag.
+    .{ .name_prefix = "Galaxy Fit", .kind = .band, .detail = "Samsung Galaxy Fit" },
+    .{ .name_prefix = "BYD", .kind = .car, .detail = "BYD (digital key)" },
+    .{ .name_prefix = "YUNMAI", .kind = .scale, .detail = "YUNMAI smart scale" },
+    .{ .name_prefix = "AP_", .kind = .ap, .detail = "BLE provisioning beacon" },
+
     // Google Fast Pair / Eddystone, Exposure Notification (shared UUID),
     // Microsoft CDP (Swift Pair).
     .{ .svc = 0xFE2C, .kind = .fast_pair },
@@ -135,15 +152,6 @@ pub const rules = [_]Rule{
     // Apple 0xFCB2 service-data beacons (undocumented Apple service).
     .{ .svc = 0xFCB2, .kind = .unknown, .detail = "Apple service" },
 
-    // Name-identifiable wearables (checked against the advertised name).
-    .{ .name_prefix = "WHOOP", .kind = .band, .detail = "WHOOP fitness band" },
-    .{ .name_prefix = "Mi Smart Band", .kind = .band, .detail = "Mi Band" },
-    .{ .name_prefix = "Mi Band", .kind = .band, .detail = "Mi Band" },
-    .{ .name_prefix = "Amazfit", .kind = .band, .detail = "Amazfit" },
-    .{ .name_prefix = "Galaxy Watch", .kind = .watch, .detail = "Samsung Galaxy Watch" },
-    .{ .name_prefix = "Galaxy Buds", .kind = .headphones, .detail = "Galaxy Buds" },
-    .{ .name_prefix = "BYD", .kind = .car, .detail = "BYD (digital key)" },
-    .{ .name_prefix = "YUNMAI", .kind = .scale, .detail = "YUNMAI smart scale" },
     // YUNMAI-family scales without a captured name: the manufacturer data
     // is the device's own reversed MAC + 0000 (so the "company id" varies
     // per device and can't key a rule), but the custom service UUID 0x1310
@@ -151,7 +159,6 @@ pub const rules = [_]Rule{
     // family signature — verified on two independent field devices
     // (wild16/wild17: named YUNMAI-ISSE-US and an unnamed sibling).
     .{ .svc = 0x1310, .kind = .scale, .detail = "YUNMAI-family scale" },
-    .{ .name_prefix = "AP_", .kind = .ap, .detail = "BLE provisioning beacon" },
 
     // BLUETTI power stations (mfr 0x4C42, payload is ASCII 'BLUETTI').
     .{ .company = 0x4C42, .kind = .appliance, .detail = "BLUETTI power station" },
