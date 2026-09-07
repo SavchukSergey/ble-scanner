@@ -481,10 +481,14 @@ fn decodeHeySiri(body: []const u8, w: *std.Io.Writer) bool {
 pub fn decodeHuamiLegacy(payload: []const u8, w: *std.Io.Writer) bool {
     if (payload.len < 8) return false;
     if (payload[0] != 0x02) return false;
-    // Last 6 bytes of the payload are the device MAC (little-endian)
+    // Last 6 bytes are the device MAC echo in FORWARD (big-endian)
+    // order — verified against the sender address on two real captures
+    // (F3:F0:BB:4B:94:01 and C1:08:12:09:27:11 both carry their own
+    // address un-reversed). The decoder used to mirror it and printed
+    // an address belonging to no device.
     if (payload.len >= 8) {
         var mac: [6]u8 = undefined;
-        for (0..6) |k| mac[k] = payload[payload.len - 1 - k];
+        @memcpy(&mac, payload[payload.len - 6 ..]);
         var mb: [17]u8 = undefined;
         const mac_str = std.fmt.bufPrint(&mb, "{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}:{X:0>2}", .{
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
@@ -650,12 +654,22 @@ test "decode garmin beacon" {
 test "decode huami legacy mac echo" {
     var aw: std.Io.Writer.Allocating = .init(testing.allocator);
     defer aw.deinit();
-    // 02 + 16 bytes (FF×10 + MAC LE: F3 F0 BB 4B 94 01)
+    // Real capture (wild3): sender F3:F0:BB:4B:94:01 — the payload's
+    // trailing 6 bytes are the address in FORWARD order, matching the
+    // sender exactly (regression: the decoder used to reverse them).
     const payload = [_]u8{0x02} ++ ([_]u8{0xFF} ** 10) ++ [_]u8{ 0xF3, 0xF0, 0xBB, 0x4B, 0x94, 0x01 };
     try testing.expect(decodeHuamiLegacy(&payload, &aw.writer));
     try aw.writer.flush();
-    try testing.expect(std.mem.indexOf(u8, aw.written(), "01:94:4B:BB:F0:F3") != null);
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "F3:F0:BB:4B:94:01") != null);
     try testing.expect(std.mem.indexOf(u8, aw.written(), "legacy Mi Band") != null);
+
+    // Real capture (wild20): sender C1:08:12:09:27:11.
+    aw.clearRetainingCapacity();
+    const p2 = [_]u8{0x02} ++ ([_]u8{0xFF} ** 16) ++ [_]u8{ 0x02, 0xC1, 0x08, 0x12, 0x09, 0x27, 0x11 };
+    try testing.expect(decodeHuamiLegacy(&p2, &aw.writer));
+    try aw.writer.flush();
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "C1:08:12:09:27:11") != null);
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "11:27:09:12:08:C1") == null);
 }
 
 test "decode apple find my AP state" {
