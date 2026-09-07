@@ -535,10 +535,13 @@ pub fn decodeSamsung(payload: []const u8, w: *std.Io.Writer) bool {
 
 pub fn decodeGree(payload: []const u8, w: *std.Io.Writer) bool {
     if (payload.len < 8) return false;
-    // MAC echo at offset 3 (reversed)
+    // MAC echo at offset 3, FORWARD order — verified against the sender
+    // address on every real capture (190 events, all forward, zero
+    // reversed). The decoder used to mirror it, printing an address
+    // belonging to no device.
     if (payload.len >= 9) {
         var mac: [6]u8 = undefined;
-        for (0..6) |k| mac[k] = payload[8 - k];
+        @memcpy(&mac, payload[3..9]);
         var mb: [17]u8 = undefined;
         w.print("device mac       {s}\n", .{macStr2(mac, &mb)}) catch {};
     }
@@ -703,10 +706,14 @@ test "decode samsung tv" {
 test "decode gree ac" {
     var aw: std.Io.Writer.Allocating = .init(testing.allocator);
     defer aw.deinit();
+    // Real capture (wild14), sender C0:39:37:0E:2E:33 — the MAC echo at
+    // payload[3..9] is the address in FORWARD order (regression: the
+    // decoder used to reverse it and print 33:2E:0E:37:39:C0).
     const payload = [_]u8{ 0x00, 0x00, 0x01, 0xC0, 0x39, 0x37, 0x0E, 0x2E, 0x33, 0x00, 0x00, 0x00, 0x00, 0x00 };
     try testing.expect(decodeGree(&payload, &aw.writer));
     try aw.writer.flush();
-    try testing.expect(std.mem.indexOf(u8, aw.written(), "33:2E:0E:37:39:C0") != null);
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "C0:39:37:0E:2E:33") != null);
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "33:2E:0E:37:39:C0") == null);
     try testing.expect(std.mem.indexOf(u8, aw.written(), "command") != null);
 }
 
