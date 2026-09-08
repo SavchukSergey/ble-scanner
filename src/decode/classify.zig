@@ -26,6 +26,8 @@ pub fn classify(sections: []const model.AdSection, name: []const u8) Match {
         const n = ad.serviceUuids16(sections, &uuids);
         if (n > 0) svc = uuids[0];
     }
+    var uuids128: [2][16]u8 = undefined;
+    const n128 = ad.serviceUuids128(sections, &uuids128);
 
     // 1. Rule table (first match wins; name rules only for named devices).
     for (devices.rules) |r| {
@@ -43,6 +45,17 @@ pub fn classify(sections: []const model.AdSection, name: []const u8) Match {
         }
         if (r.svc) |s| {
             if (svc == null or svc.? != s) continue;
+            return r;
+        }
+        if (r.svc128) |want| {
+            var hit = false;
+            for (uuids128[0..n128]) |u| {
+                if (std.mem.eql(u8, &u, &want)) {
+                    hit = true;
+                    break;
+                }
+            }
+            if (!hit) continue;
             return r;
         }
     }
@@ -373,4 +386,26 @@ test "classify oppo device by company id" {
     };
     const m = classify(&secs, "");
     try testing.expectEqualStrings("OPPO device", m.detail.?);
+}
+
+test "classify BYD digital-key beacon by 128-bit UUID (no name)" {
+    // Real capture (wild23): flags + a single 0x06 section carrying the
+    // custom UUID on air in little-endian; display order spells "BYD AUTO".
+    // No name and no 16-bit UUID — the name rule alone can't fire.
+    const secs = [_]model.AdSection{
+        .{ .typ = 0x01, .data = &.{0x06} },
+        .{ .typ = 0x06, .data = &[_]u8{
+            0x9e, 0xca, 0xdc, 0x24, 0x0e, 0xe5, 0xa9, 0xe0,
+            0x4f, 0x54, 0x55, 0x41, 0x20, 0x44, 0x59, 0x42,
+        } },
+    };
+    const m = classify(&secs, "");
+    try testing.expectEqual(Kind.car, m.kind);
+    try testing.expectEqualStrings("BYD (digital key)", m.detail.?);
+
+    // A non-matching 128-bit UUID must not fire the rule.
+    const other = [_]model.AdSection{
+        .{ .typ = 0x06, .data = &([_]u8{0xAB} ** 16) },
+    };
+    try testing.expectEqual(Kind.unknown, classify(&other, "").kind);
 }

@@ -91,6 +91,10 @@ pub const Rule = struct {
     prefix: []const u8 = &.{},
     /// Service-data or advertised 16-bit service UUID.
     svc: ?u16 = null,
+    /// Complete 128-bit service UUID, display (big-endian) order — matched
+    /// against 0x06/0x07 sections. Some vendors (BYD) ONLY beacon a custom
+    /// 128-bit UUID with no name and no 16-bit alias.
+    svc128: ?[16]u8 = null,
     /// Case-insensitive prefix of the advertised name.
     name_prefix: ?[]const u8 = null,
     kind: Kind,
@@ -122,6 +126,13 @@ pub const rules = [_]Rule{
     // SmartThings beacon otherwise labels them a generic tracker tag.
     .{ .name_prefix = "Galaxy Fit", .kind = .band, .detail = "Samsung Galaxy Fit" },
     .{ .name_prefix = "BYD", .kind = .car, .detail = "BYD (digital key)" },
+    // BYD digital-key beacon with no name: custom 128-bit service UUID
+    // whose display form spells "BYD AUTO" (wild23, two rotating
+    // addresses; the SIG 16-bit UUID 0xFC55 is not what the cars use).
+    .{ .svc128 = .{
+        0x42, 0x59, 0x44, 0x20, 0x41, 0x55, 0x54, 0x4F,
+        0xE0, 0xA9, 0xE5, 0x0E, 0x24, 0xDC, 0xCA, 0x9E,
+    }, .kind = .car, .detail = "BYD (digital key)" },
     .{ .name_prefix = "YUNMAI", .kind = .scale, .detail = "YUNMAI smart scale" },
     .{ .name_prefix = "AP_", .kind = .ap, .detail = "BLE provisioning beacon" },
 
