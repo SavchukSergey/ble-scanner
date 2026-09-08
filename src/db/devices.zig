@@ -146,8 +146,16 @@ pub const rules = [_]Rule{
     .{ .svc = 0xFE95, .kind = .xiaomi },
     .{ .company = 0x038F, .kind = .xiaomi },
 
-    // Tuya smart-home devices (mfr id 0x07D0).
+    // Tuya smart-home devices (mfr id 0x07D0, or their 0xA201 service
+    // beacon — the same physical device carries both, in separate frames:
+    // wild22 heard only the A201 service data at -101 dBm and the 0x07D0
+    // section was missed, leaving a known device unclassified).
     .{ .company = 0x07D0, .kind = .tuya },
+    .{ .svc = 0xA201, .kind = .tuya },
+
+    // OPPO phones/accessories (mfr id 0x079A; payload embeds the device
+    // MAC reversed at offset 7 — wild22, first sighting, no name heard).
+    .{ .company = 0x079A, .kind = .unknown, .detail = "OPPO device" },
 
     // Apple 0xFCB2 service-data beacons (undocumented Apple service).
     .{ .svc = 0xFCB2, .kind = .unknown, .detail = "Apple service" },

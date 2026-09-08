@@ -350,3 +350,27 @@ test "classify galaxy fit band by name" {
     try testing.expectEqual(Kind.band, m.kind);
     try testing.expectEqualStrings("Samsung Galaxy Fit", m.detail.?);
 }
+
+test "classify tuya by service beacon when the mfr frame was missed" {
+    // Real capture (wild22): the TY device's weak ADV carried only the
+    // 0xA201 service data — no 0xFF manufacturer section (the 0x07D0
+    // beacon rides a different frame) — so the company rule never fired.
+    const secs = [_]model.AdSection{
+        .{ .typ = 0x01, .data = &.{0x06} },
+        .{ .typ = 0x02, .data = &.{ 0x01, 0xA2 } },
+        .{ .typ = 0x16, .data = &[_]u8{ 0x01, 0xA2, 0x00, 0xED, 0x63, 0x47, 0xD7, 0x58, 0xC9, 0x0B, 0x11, 0x78, 0x78, 0x4D, 0x12, 0xB7, 0x07, 0x7C, 0x3C } },
+    };
+    const m = classify(&secs, "");
+    try testing.expectEqual(Kind.tuya, m.kind);
+}
+
+test "classify oppo device by company id" {
+    // Real capture (wild22): company 0x079A, sender 48:D8:45:5B:81:AE
+    // echoed reversed at payload offset 7.
+    const secs = [_]model.AdSection{
+        .{ .typ = 0x01, .data = &.{0x18} },
+        .{ .typ = 0xFF, .data = &[_]u8{ 0x9A, 0x07, 0x10, 0x18, 0x06, 0x3F, 0x00, 0x03, 0x98, 0x04, 0xAE, 0x81, 0x5B, 0x45, 0xD8, 0x48, 0x0B, 0x00, 0x00, 0x00, 0x02 } },
+    };
+    const m = classify(&secs, "");
+    try testing.expectEqualStrings("OPPO device", m.detail.?);
+}
