@@ -194,6 +194,10 @@ pub const rules = [_]Rule{
     // observed on air with NO advertised name (NonConnectableUndirected
     // frames only), so the name rules above never fire (wild16 capture).
     .{ .company = 0x0075, .prefix = &.{0x42}, .kind = .tv, .detail = "Samsung TV" },
+    // Generic Samsung catch: 0x0075 is exclusively Samsung Electronics in
+    // the SIG registry, and phones/hoods/trackers beacon other payload
+    // types (wild27 saw type 0x02 with no name and no service data).
+    .{ .company = 0x0075, .kind = .unknown, .detail = "Samsung device" },
 
     // Known wearable vendors (no appearance/service hints needed).
     .{ .company = 0x0087, .kind = .watch, .detail = "Garmin" },

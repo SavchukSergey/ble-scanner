@@ -409,3 +409,19 @@ test "classify BYD digital-key beacon by 128-bit UUID (no name)" {
     };
     try testing.expectEqual(Kind.unknown, classify(&other, "").kind);
 }
+
+test "classify generic samsung beacon with unknown payload type" {
+    // Real capture (wild27): company 0x0075, payload type 0x02 (neither the
+    // 0x42 TV beacon nor the 0x01 status type), no name, no service data.
+    const secs = [_]model.AdSection{
+        .{ .typ = 0x01, .data = &.{0x02} },
+        .{ .typ = 0xFF, .data = &[_]u8{ 0x75, 0x00, 0x02, 0x18, 0x61, 0xB1, 0xB4, 0x15, 0x22, 0x90, 0xA3, 0x9D, 0xC0, 0xCA, 0xF1, 0x7D, 0x21, 0x33, 0x1C, 0x83, 0x13, 0xD0, 0xBC } },
+    };
+    const m = classify(&secs, "");
+    try testing.expectEqualStrings("Samsung device", m.detail.?);
+    // The TV beacon keeps its specific label.
+    const tv = [_]model.AdSection{
+        .{ .typ = 0xFF, .data = &[_]u8{ 0x75, 0x00, 0x42, 0x04 } },
+    };
+    try testing.expectEqualStrings("Samsung TV", classify(&tv, "").detail.?);
+}
