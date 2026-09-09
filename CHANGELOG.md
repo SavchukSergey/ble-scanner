@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-09
+
+### Added
+- Rule engine matches 128-bit service UUIDs; BYD vehicles' nameless
+  digital-key beacons (their UUID spells "BYD AUTO") classify as cars.
+- Tuya devices classify from their 0xA201 service beacon, not only the
+  manufacturer-data frame, so partial captures stay classified.
+- Device names now outrank framework labels — a named "Galaxy Buds"/
+  "Galaxy Watch" shows as headphones/watch instead of "Fast Pair", and
+  Galaxy Fit bands get their own label.
+- New vendor labels: unnamed YUNMAI-family scales (service-signature
+  match), OPPO devices, and a generic Samsung catch for 0x0075 beacons
+  with unknown payload types.
+
+### Fixed
+- The payload snapshot collapsed same-type AD sections within one
+  advertisement, silently dropping all but the last UUID list.
+- The Huami legacy and GREE AC decoders printed mirrored MAC addresses
+  (the echoes are big-endian).
+- The detail view dropped RAW ADVERTISING DATA lines for sections over
+  ~222 bytes.
+- Quitting could crash or report leaks: use-after-frees under the win-ps
+  stderr drain, the linux-hci reader and in-flight win-rt callbacks are
+  gone, and Debug builds no longer print allocator leak reports on exit.
+- Devices whose every report carried "not measured" RSSI showed sentinel
+  garbage (127 / -128 dBm) in the detail view, radar readout and panel.
+- A nearby device could erase the radar's "you are here" center marker.
+- Headless capture with a bad --log path exited without stopping the
+  backend.
+
 ## [0.3.0] - 2026-09-06
 
 ### Added
