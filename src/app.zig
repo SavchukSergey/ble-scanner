@@ -885,6 +885,17 @@ pub const App = struct {
         if (ad.serviceData16(secs)) |sd| {
             if (vendors.decodeSvcData(sd.uuid, sd.data, &aw.writer)) wrote = true;
         }
+        if (!wrote) {
+            // Fallback: some vendors (seen on air: the "soocam1s" beacon,
+            // BLUETTI) put a plain ASCII model/brand string in the
+            // manufacturer data. Printing it beats a hex wall.
+            if (ad.manufacturer(secs)) |m| {
+                if (printableAscii(m.payload)) {
+                    aw.writer.print("model            {s}\n", .{m.payload}) catch {};
+                    wrote = true;
+                }
+            }
+        }
         if (!wrote) return;
         aw.writer.flush() catch return;
 
@@ -894,6 +905,15 @@ pub const App = struct {
             if (line.len == 0) continue;
             self.put(.text, "  {s}", .{line});
         }
+    }
+
+    /// Payload made of printable ASCII and long enough to mean something.
+    fn printableAscii(s: []const u8) bool {
+        if (s.len < 4 or s.len > 32) return false;
+        for (s) |c| {
+            if (c < 0x20 or c > 0x7E) return false;
+        }
+        return true;
     }
 
     fn uuid128Str(bytes: *const [16]u8, buf: *[36]u8) []const u8 {
@@ -1012,4 +1032,33 @@ test "raw advertising data line survives a full-size AD section" {
         }
     }
     try testing.expect(found);
+}
+
+test "printable-ASCII manufacturer payloads render as a model line" {
+    const testing = std.testing;
+    var store = try store_mod.Store.init(testing.allocator);
+    defer store.deinit();
+    var app = App.init(testing.allocator, &store, "test");
+    defer app.deinit();
+
+    // Real capture (wild16): the 0x5555 "soocam1s" beacon — vendor-agnostic
+    // fallback prints the ASCII string instead of leaving the section hex-only.
+    const secs = [_]model.AdSection{
+        .{ .typ = 0xFF, .data = &[_]u8{ 0x55, 0x55 } ++ "soocam1s" },
+    };
+    app.putDecodedPayloads(&secs);
+    var saw_model = false;
+    for (app.detail_lines.items) |l| {
+        if (std.mem.indexOf(u8, l.text, "soocam1s") != null) saw_model = true;
+    }
+    try testing.expect(saw_model);
+
+    // Binary payloads (the common case) must not trigger the fallback.
+    app.detail_lines.clearRetainingCapacity();
+    app.detail_txt.clearRetainingCapacity();
+    const binary = [_]model.AdSection{
+        .{ .typ = 0xFF, .data = &[_]u8{ 0x12, 0xA2, 0x4D, 0x2E, 0xFE, 0x14 } },
+    };
+    app.putDecodedPayloads(&binary);
+    try testing.expectEqual(@as(usize, 0), app.detail_lines.items.len);
 }

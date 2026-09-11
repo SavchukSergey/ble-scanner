@@ -270,6 +270,9 @@ const xiaomi_products = [_]struct { p: u16, name: []const u8 }{
     .{ .p = 0x01C4, .name = "Mi Band 4" },
     .{ .p = 0x0256, .name = "Mi Smart Band 7" },
     .{ .p = 0x038F, .name = "Mi Smart Band 8" },
+    // Name self-advertised by the only field device seen carrying it
+    // (wild16: advertises both "SMI-M1S" and a 0x5555 "soocam1s" beacon).
+    .{ .p = 0x0489, .name = "SMI M1S (soocam)" },
 };
 
 fn xiaomiProduct(p: u16) ?[]const u8 {
@@ -878,4 +881,15 @@ test "decode apple nearby action with unrecognized code" {
     try testing.expect(decodeApple(&payload, &aw.writer));
     try aw.writer.flush();
     try testing.expect(std.mem.indexOf(u8, aw.written(), "0x3C1A (unrecognized action)") != null);
+}
+
+test "xiaomi SMI-M1S product id resolves" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    // Real capture (wild16): ctrl 0x3031 (encrypted, MAC included),
+    // product 0x0489 — the SMI-M1S ("soocam1s") device.
+    const data = [_]u8{ 0x31, 0x30, 0x89, 0x04, 0x98, 0xEC, 0x01, 0x59, 0x55, 0xFE, 0xD5, 0x09 };
+    try testing.expect(decodeXiaomi(&data, &aw.writer));
+    try aw.writer.flush();
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "SMI M1S (soocam)") != null);
 }
