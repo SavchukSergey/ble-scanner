@@ -1,6 +1,6 @@
 # ble-scanner — Architecture
 
-**Targets:** Zig 0.16.0 · Windows 10/11 + Linux
+**Targets:** Zig 0.17.0 · Windows 10/11 + Linux
 **Shape:** full-screen terminal UI, passive BLE advertisement scanner
 
 This document describes the system as built. The milestone history at the

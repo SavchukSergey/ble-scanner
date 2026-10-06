@@ -23,7 +23,7 @@ pub fn sectionName(t: u8) ?[]const u8 {
         0x10 => "Service data - 16-bit UUID",
         0x11 => "Service data - 32-bit UUID",
         0x12 => "Peripheral connection interval range",
-        0x14 => "16-bit service UUIDs (list)" ,
+        0x14 => "16-bit service UUIDs (list)",
         0x15 => "Service data - 128-bit UUID",
         0x16 => "Service data - 16-bit UUID",
         0x19 => "Appearance",

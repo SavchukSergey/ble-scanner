@@ -199,7 +199,7 @@ const testing = std.testing;
 
 test "classify ibeacon" {
     const secs = [_]model.AdSection{
-        .{ .typ = 0xFF, .data = &[_]u8{0x4C} ++ &[_]u8{0x00} ++ &[_]u8{0x02} ++ &[_]u8{0x15} ++ ([_]u8{0xDE} ** 16) ++ &[_]u8{ 0x00, 0x01, 0x00, 0x02, 0xC5 } },
+        .{ .typ = 0xFF, .data = &[_]u8{0x4C} ++ &[_]u8{0x00} ++ &[_]u8{0x02} ++ &[_]u8{0x15} ++ (@as([16]u8, @splat(0xDE))) ++ &[_]u8{ 0x00, 0x01, 0x00, 0x02, 0xC5 } },
     };
     const m = classify(&secs, "");
     try testing.expectEqual(Kind.ibeacon, m.kind);
@@ -247,7 +247,7 @@ test "classify continuity and exposure" {
     try testing.expectEqualStrings("AirPods nearby", m1.detail.?);
 
     const en = [_]model.AdSection{
-        .{ .typ = 0x16, .data = &([_]u8{ 0x6F, 0xFD } ++ ([_]u8{0xAB} ** 20)) },
+        .{ .typ = 0x16, .data = &([_]u8{ 0x6F, 0xFD } ++ (@as([20]u8, @splat(0xAB)))) },
     };
     try testing.expectEqual(Kind.exposure, classify(&en, "").kind);
 }
@@ -298,7 +298,7 @@ test "classify by name prefix" {
 
     // Mi Smart Band name wins over the generic Huami company rule.
     const mi = [_]model.AdSection{
-        .{ .typ = 0xFF, .data = &([_]u8{ 0x57, 0x01 } ++ ([_]u8{0xFF} ** 8)) },
+        .{ .typ = 0xFF, .data = &([_]u8{ 0x57, 0x01 } ++ (@as([8]u8, @splat(0xFF)))) },
     };
     const m2 = classify(&mi, "Mi Smart Band 4");
     try testing.expectEqual(Kind.band, m2.kind);
@@ -405,7 +405,7 @@ test "classify BYD digital-key beacon by 128-bit UUID (no name)" {
 
     // A non-matching 128-bit UUID must not fire the rule.
     const other = [_]model.AdSection{
-        .{ .typ = 0x06, .data = &([_]u8{0xAB} ** 16) },
+        .{ .typ = 0x06, .data = &(@as([16]u8, @splat(0xAB))) },
     };
     try testing.expectEqual(Kind.unknown, classify(&other, "").kind);
 }

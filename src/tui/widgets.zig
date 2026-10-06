@@ -429,7 +429,7 @@ pub fn drawListBody(s: *Screen, entries: []*Entry, kinds: ?[]const u8, sel_idx: 
 
 /// One group header line: `── watch (3) ───────` spanning the list width.
 fn drawGroupHeader(s: *Screen, y: u32, w: u32, kind_u8: u8, count: usize) void {
-    const kind: classify.Kind = @enumFromInt(kind_u8);
+    const kind: classify.Kind = @fromBackingInt(@intCast(kind_u8));
     var buf: [48]u8 = undefined;
     const label = std.fmt.bufPrint(&buf, "{s} ({d})", .{ kind.label(), count }) catch kind.label();
     const dash: u21 = if (screen_mod.ascii) '-' else '─';
@@ -715,49 +715,49 @@ fn drawSelectionReadout(s: *Screen, entries: []*Entry, sel_idx: usize) void {
 /// criterion changed without the other following along.
 fn drawNearestPanel(s: *Screen, entries: []*Entry, sel_idx: usize) void {
     if (s.w < 104 or entries.len == 0) return;
-        const px: u32 = s.w - 26;
-        const sorted = entries;
+    const px: u32 = s.w - 26;
+    const sorted = entries;
 
-        const rows_avail: usize = if (s.h > 11) s.h - 7 else 1;
-        var top: usize = 0;
-        if (sel_idx >= rows_avail / 2 and sorted.len > rows_avail) {
-            top = @min(sel_idx - rows_avail / 2, sorted.len - rows_avail);
-        }
+    const rows_avail: usize = if (s.h > 11) s.h - 7 else 1;
+    var top: usize = 0;
+    if (sel_idx >= rows_avail / 2 and sorted.len > rows_avail) {
+        top = @min(sel_idx - rows_avail / 2, sorted.len - rows_avail);
+    }
 
-        var hb: [24]u8 = undefined;
-        const hdr = std.fmt.bufPrint(&hb, "NEAREST {d}/{d}", .{ sel_idx + 1, sorted.len }) catch "NEAREST";
-        _ = s.text(px, 2, hdr, .{ .fg = c_dim, .bold = true });
-        if (top > 0) {
-            s.put(px + 21, 2, if (screen_mod.ascii) '^' else '↑', .{ .fg = c_accent });
-        }
+    var hb: [24]u8 = undefined;
+    const hdr = std.fmt.bufPrint(&hb, "NEAREST {d}/{d}", .{ sel_idx + 1, sorted.len }) catch "NEAREST";
+    _ = s.text(px, 2, hdr, .{ .fg = c_dim, .bold = true });
+    if (top > 0) {
+        s.put(px + 21, 2, if (screen_mod.ascii) '^' else '↑', .{ .fg = c_accent });
+    }
 
-        var row: u32 = 4;
-        var i: usize = top;
-        while (i < sorted.len and row < s.h - 3) : ({
-            i += 1;
-            row += 1;
-        }) {
-            const e = sorted[i];
-            var db: [12]u8 = undefined;
-            const dist = estDistanceMeters(e);
-            const dstr = if (dist < 10)
-                std.fmt.bufPrint(&db, "~{d:.1}m", .{dist}) catch ""
-            else
-                std.fmt.bufPrint(&db, "~{d}m", .{@as(u32, @intFromFloat(dist))}) catch "";
-            const row_sel = (i == sel_idx);
-            const row_st: Style = if (row_sel) .{ .fg = 255, .bg = c_sel_bg, .bold = true } else .{ .fg = c_base };
-            if (row_sel) s.fillRect(px, row, 22, 1, row_st);
-            s.put(px, row, if (row_sel) '>' else ' ', row_st);
-            s.put(px + 1, row, deviceGlyph(e), .{ .fg = if (row_sel) 255 else (if (hasRssi(e)) rssiColor(e.rssiAvg()) else 240), .bg = row_st.bg, .bold = true });
-            var nb: [17]u8 = undefined;
-            var nm: []const u8 = e.name();
-            if (nm.len == 0) nm = model.formatMac(e.addr, &nb);
-            s.textBounded(px + 3, row, nm, 14, row_st);
-            _ = s.text(px + 18, row, dstr, .{ .fg = if (row_sel) 255 else c_dim, .bg = row_st.bg });
-        }
-        if (i < sorted.len) {
-            s.put(px + 21, s.h - 3, if (screen_mod.ascii) 'v' else '↓', .{ .fg = c_accent });
-        }
+    var row: u32 = 4;
+    var i: usize = top;
+    while (i < sorted.len and row < s.h - 3) : ({
+        i += 1;
+        row += 1;
+    }) {
+        const e = sorted[i];
+        var db: [12]u8 = undefined;
+        const dist = estDistanceMeters(e);
+        const dstr = if (dist < 10)
+            std.fmt.bufPrint(&db, "~{d:.1}m", .{dist}) catch ""
+        else
+            std.fmt.bufPrint(&db, "~{d}m", .{@as(u32, @intFromFloat(dist))}) catch "";
+        const row_sel = (i == sel_idx);
+        const row_st: Style = if (row_sel) .{ .fg = 255, .bg = c_sel_bg, .bold = true } else .{ .fg = c_base };
+        if (row_sel) s.fillRect(px, row, 22, 1, row_st);
+        s.put(px, row, if (row_sel) '>' else ' ', row_st);
+        s.put(px + 1, row, deviceGlyph(e), .{ .fg = if (row_sel) 255 else (if (hasRssi(e)) rssiColor(e.rssiAvg()) else 240), .bg = row_st.bg, .bold = true });
+        var nb: [17]u8 = undefined;
+        var nm: []const u8 = e.name();
+        if (nm.len == 0) nm = model.formatMac(e.addr, &nb);
+        s.textBounded(px + 3, row, nm, 14, row_st);
+        _ = s.text(px + 18, row, dstr, .{ .fg = if (row_sel) 255 else c_dim, .bg = row_st.bg });
+    }
+    if (i < sorted.len) {
+        s.put(px + 21, s.h - 3, if (screen_mod.ascii) 'v' else '↓', .{ .fg = c_accent });
+    }
 }
 
 /// Shared honesty footer for radar/map views.
@@ -985,13 +985,13 @@ test "tzifUtcOffset finds the v2 block and active gmtoff" {
     // expected) that made the v2 magic never be found and every Linux clock
     // render fall back to UTC.
     const blob = [_]u8{
-        84,90,105,102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
-        0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,4,0,0,0,0,
-        0,0,0,28,32,0,0,69,69,84,0,0,0,84,90,105,102,50,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,2,0,0,0,0,0,0,0,
-        1,0,0,0,2,0,0,0,8,0,0,0,0,0,0,0,0,1,0,0,28,32,0,0,
-        0,0,42,48,1,4,69,69,84,0,69,69,83,84,0,0,0,0,0,10,84,90,102,111,
-        111,116,101,114,10,
+        84,  90,  105, 102, 0,  0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,   0,   0,  0, 0,  0,  0,  0,   1,
+        0,   0,   0,   1,   0,  0, 0,  0,  0,  0,  0,  1,  0,  0,  0,  1,   0,   0,  0, 4,  0,  0,  0,   0,
+        0,   0,   0,   28,  32, 0, 0,  69, 69, 84, 0,  0,  0,  84, 90, 105, 102, 50, 0, 0,  0,  0,  0,   0,
+        0,   0,   0,   0,   0,  0, 0,  0,  0,  0,  0,  0,  2,  0,  0,  0,   2,   0,  0, 0,  0,  0,  0,   0,
+        1,   0,   0,   0,   2,  0, 0,  0,  8,  0,  0,  0,  0,  0,  0,  0,   0,   1,  0, 0,  28, 32, 0,   0,
+        0,   0,   42,  48,  1,  4, 69, 69, 84, 0,  69, 69, 83, 84, 0,  0,   0,   0,  0, 10, 84, 90, 102, 111,
+        111, 116, 101, 114, 10,
     };
     try std.testing.expectEqual(@as(i64, 10800), tzifUtcOffset(&blob, 1_700_000_000));
     // Before the transition: falls back to type 0 (gmtoff 7200).

@@ -470,7 +470,7 @@ pub const App = struct {
             for (self.ordered.items) |e| {
                 const nsecs = e.sections(&secs_buf);
                 const m = classify.classify(secs_buf[0..nsecs], e.name());
-                self.pairs.append(self.gpa, .{ .k = @intFromEnum(m.kind), .e = e }) catch return;
+                self.pairs.append(self.gpa, .{ .k = @backingInt(m.kind), .e = e }) catch return;
             }
             const PCtx = struct {
                 mode: SortMode,
@@ -693,7 +693,7 @@ pub const App = struct {
         var tb: [12]u8 = undefined;
         var cb: [12]u8 = undefined;
         self.put(.label, "  First seen     {s}  ({d} events)", .{ widgets.fmtClock(e.first_ms, &tb), e.count });
-        self.put(.label, "  Last seen      {s} ago", .{ widgets.fmtAge(now_ms - e.last_ms, &cb) });
+        self.put(.label, "  Last seen      {s} ago", .{widgets.fmtAge(now_ms - e.last_ms, &cb)});
 
         self.put(.section, "RADIO", .{});
         if (widgets.hasRssi(e)) {

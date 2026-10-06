@@ -75,9 +75,10 @@ test "Kind.parse recognizes every CLI spelling and rejects garbage" {
 test "Kind.label roundtrips through parse for every variant" {
     // Catches a typo introduced in one of the two hand-maintained switch
     // tables (parse's map, label's switch) without the other following.
-    inline for (@typeInfo(Kind).@"enum".fields) |f| {
-        const k: Kind = @enumFromInt(f.value);
+    inline for (@typeInfo(Kind).@"enum".field_names, @typeInfo(Kind).@"enum".field_values) |name, value| {
+        const k: Kind = @fromBackingInt(@intCast(value));
         try testing.expectEqual(k, Kind.parse(k.label()).?);
+        _ = name;
     }
 }
 

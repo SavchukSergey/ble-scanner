@@ -14,7 +14,7 @@ zig build run -- --replay fixtures/demo.jsonl              # browse the demo cap
 zig build run --                                          # live scan (needs a Bluetooth adapter)
 ```
 
-- **Zig 0.16.0** is required (the std API surface moves between releases;
+- **Zig 0.17.0** is required (the std API surface moves between releases;
   the version is pinned in `build.zig.zon`).
 - No third-party dependencies — std only.
 

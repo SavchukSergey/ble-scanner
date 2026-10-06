@@ -92,23 +92,23 @@ const VT_Watcher = extern struct {
     GetRuntimeClassName: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32,
     GetTrustLevel: *const fn (*anyopaque, *i32) callconv(.c) i32,
     // IBluetoothLEAdvertisementWatcher (6+) — exact order from .winmd via PS reflection
-    get_MinSamplingInterval: *const fn (*anyopaque, *i64) callconv(.c) i32,       // 6
-    get_MaxSamplingInterval: *const fn (*anyopaque, *i64) callconv(.c) i32,       // 7
-    get_MinOutOfRangeTimeout: *const fn (*anyopaque, *i64) callconv(.c) i32,      // 8
-    get_MaxOutOfRangeTimeout: *const fn (*anyopaque, *i64) callconv(.c) i32,      // 9
-    get_Status: *const fn (*anyopaque, *i32) callconv(.c) i32,                    // 10
-    get_ScanningMode: *const fn (*anyopaque, *i32) callconv(.c) i32,               // 11
-    put_ScanningMode: *const fn (*anyopaque, i32) callconv(.c) i32,                // 12
+    get_MinSamplingInterval: *const fn (*anyopaque, *i64) callconv(.c) i32, // 6
+    get_MaxSamplingInterval: *const fn (*anyopaque, *i64) callconv(.c) i32, // 7
+    get_MinOutOfRangeTimeout: *const fn (*anyopaque, *i64) callconv(.c) i32, // 8
+    get_MaxOutOfRangeTimeout: *const fn (*anyopaque, *i64) callconv(.c) i32, // 9
+    get_Status: *const fn (*anyopaque, *i32) callconv(.c) i32, // 10
+    get_ScanningMode: *const fn (*anyopaque, *i32) callconv(.c) i32, // 11
+    put_ScanningMode: *const fn (*anyopaque, i32) callconv(.c) i32, // 12
     get_SignalStrengthFilter: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32, // 13
-    put_SignalStrengthFilter: *const fn (*anyopaque, *anyopaque) callconv(.c) i32,  // 14
+    put_SignalStrengthFilter: *const fn (*anyopaque, *anyopaque) callconv(.c) i32, // 14
     get_AdvertisementFilter: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32, // 15
-    put_AdvertisementFilter: *const fn (*anyopaque, *anyopaque) callconv(.c) i32,  // 16
-    Start: *const fn (*anyopaque) callconv(.c) i32,                                // 17
-    Stop: *const fn (*anyopaque) callconv(.c) i32,                                 // 18
-    add_Received: *const fn (*anyopaque, *anyopaque, *u64) callconv(.c) i32,       // 19
-    remove_Received: *const fn (*anyopaque, u64) callconv(.c) i32,                 // 20
-    add_Stopped: *const fn (*anyopaque, *anyopaque, *u64) callconv(.c) i32,        // 21
-    remove_Stopped: *const fn (*anyopaque, u64) callconv(.c) i32,                  // 22
+    put_AdvertisementFilter: *const fn (*anyopaque, *anyopaque) callconv(.c) i32, // 16
+    Start: *const fn (*anyopaque) callconv(.c) i32, // 17
+    Stop: *const fn (*anyopaque) callconv(.c) i32, // 18
+    add_Received: *const fn (*anyopaque, *anyopaque, *u64) callconv(.c) i32, // 19
+    remove_Received: *const fn (*anyopaque, u64) callconv(.c) i32, // 20
+    add_Stopped: *const fn (*anyopaque, *anyopaque, *u64) callconv(.c) i32, // 21
+    remove_Stopped: *const fn (*anyopaque, u64) callconv(.c) i32, // 22
 };
 
 const VT_EventArgs = extern struct {
@@ -119,11 +119,11 @@ const VT_EventArgs = extern struct {
     GetRuntimeClassName: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32,
     GetTrustLevel: *const fn (*anyopaque, *i32) callconv(.c) i32,
     // Exact order from .winmd via PS reflection
-    get_RawSignalStrengthInDBm: *const fn (*anyopaque, *i16) callconv(.c) i32,  // 6
-    get_BluetoothAddress: *const fn (*anyopaque, *u64) callconv(.c) i32,        // 7
-    get_AdvertisementType: *const fn (*anyopaque, *i32) callconv(.c) i32,       // 8
-    get_Timestamp: *const fn (*anyopaque, *i64) callconv(.c) i32,               // 9
-    get_Advertisement: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32,   // 10
+    get_RawSignalStrengthInDBm: *const fn (*anyopaque, *i16) callconv(.c) i32, // 6
+    get_BluetoothAddress: *const fn (*anyopaque, *u64) callconv(.c) i32, // 7
+    get_AdvertisementType: *const fn (*anyopaque, *i32) callconv(.c) i32, // 8
+    get_Timestamp: *const fn (*anyopaque, *i64) callconv(.c) i32, // 9
+    get_Advertisement: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32, // 10
     // NOTE: get_BluetoothAddressType and beyond are on v2+ interfaces,
     // not present in this v1 vtable (slots past 10 = garbage).
 };
@@ -136,13 +136,13 @@ const VT_Advertisement = extern struct {
     GetRuntimeClassName: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32,
     GetTrustLevel: *const fn (*anyopaque, *i32) callconv(.c) i32,
     // Exact order from .winmd via PS reflection
-    get_Flags: *const fn (*anyopaque, *u8) callconv(.c) i32,                    // 6
-    put_Flags: *const fn (*anyopaque, u8) callconv(.c) i32,                     // 7
-    get_LocalName: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32,       // 8
-    put_LocalName: *const fn (*anyopaque, ?*anyopaque) callconv(.c) i32,        // 9
-    get_ServiceUuids: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32,    // 10
+    get_Flags: *const fn (*anyopaque, *u8) callconv(.c) i32, // 6
+    put_Flags: *const fn (*anyopaque, u8) callconv(.c) i32, // 7
+    get_LocalName: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32, // 8
+    put_LocalName: *const fn (*anyopaque, ?*anyopaque) callconv(.c) i32, // 9
+    get_ServiceUuids: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32, // 10
     get_ManufacturerData: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32, // 11
-    get_DataSections: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32,    // 12
+    get_DataSections: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32, // 12
 };
 
 const VT_DataSection = extern struct {
@@ -153,10 +153,10 @@ const VT_DataSection = extern struct {
     GetRuntimeClassName: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32,
     GetTrustLevel: *const fn (*anyopaque, *i32) callconv(.c) i32,
     // IBluetoothLEAdvertisementDataSection — from .winmd
-    get_DataType: *const fn (*anyopaque, *u8) callconv(.c) i32,       // 6
-    put_DataType: *const fn (*anyopaque, u8) callconv(.c) i32,        // 7
-    get_Data: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32,  // 8
-    put_Data: *const fn (*anyopaque, *anyopaque) callconv(.c) i32,    // 9
+    get_DataType: *const fn (*anyopaque, *u8) callconv(.c) i32, // 6
+    put_DataType: *const fn (*anyopaque, u8) callconv(.c) i32, // 7
+    get_Data: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32, // 8
+    put_Data: *const fn (*anyopaque, *anyopaque) callconv(.c) i32, // 9
 };
 
 const VT_IVectorView = extern struct {
@@ -184,7 +184,7 @@ const VT_IBuffer = extern struct {
     GetRuntimeClassName: *const fn (*anyopaque, *?*anyopaque) callconv(.c) i32,
     GetTrustLevel: *const fn (*anyopaque, *i32) callconv(.c) i32,
     get_Capacity: *const fn (*anyopaque, *u32) callconv(.c) i32, // 6 (unused)
-    get_Length: *const fn (*anyopaque, *u32) callconv(.c) i32,   // 7
+    get_Length: *const fn (*anyopaque, *u32) callconv(.c) i32, // 7
 };
 
 // Windows::Storage::Streams::IBufferByteAccess — a CLASSIC (non-WinRT) COM

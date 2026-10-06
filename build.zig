@@ -7,7 +7,7 @@ pub fn build(b: *std.Build) void {
     // inline in the ELF; Windows keeps it in a separate .pdb instead, so
     // it was never as visible there). Strip by default outside Debug —
     // pass -Dstrip=false to keep symbols in a release build if needed.
-    const strip = b.option(bool, "strip", "Strip debug symbols from the binary") orelse (optimize != .Debug);
+    const strip = b.option(bool, "strip", "Strip debug symbols from the binary") orelse (optimize != .debug);
 
     const exe = b.addExecutable(.{
         .name = "ble-scanner",
@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) void {
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_cmd.addArgs(args);
+    run_cmd.addPassthruArgs();
     const run_step = b.step("run", "Run ble-scanner");
     run_step.dependOn(&run_cmd.step);
 

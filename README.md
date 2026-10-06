@@ -42,11 +42,11 @@ Eddystone URL, Xiaomi product, Swift Pair device name) and the raw hex.
 - Record (`--log`) and replay (`--replay`) captures as plain JSONL
 - Headless capture mode and terminal-free `--selftest` render check
 - `--ascii` fallback for terminals with hostile fonts
-- Zero dependencies; 40 unit tests
+- Zero dependencies; 109 unit tests
 
 ## Requirements
 
-- Zig 0.16.0 (to build)
+- Zig 0.17.0 (to build)
 - A Bluetooth adapter (to scan) — or use `--replay` with any capture
 - A terminal with UTF-8 + ANSI support (Windows Terminal recommended;
   plain conhost works on Win10+)

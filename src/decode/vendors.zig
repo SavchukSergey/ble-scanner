@@ -663,7 +663,7 @@ test "decode huami legacy mac echo" {
     // Real capture (wild3): sender F3:F0:BB:4B:94:01 — the payload's
     // trailing 6 bytes are the address in FORWARD order, matching the
     // sender exactly (regression: the decoder used to reverse them).
-    const payload = [_]u8{0x02} ++ ([_]u8{0xFF} ** 10) ++ [_]u8{ 0xF3, 0xF0, 0xBB, 0x4B, 0x94, 0x01 };
+    const payload = [_]u8{0x02} ++ (@as([10]u8, @splat(0xFF))) ++ [_]u8{ 0xF3, 0xF0, 0xBB, 0x4B, 0x94, 0x01 };
     try testing.expect(decodeHuamiLegacy(&payload, &aw.writer));
     try aw.writer.flush();
     try testing.expect(std.mem.indexOf(u8, aw.written(), "F3:F0:BB:4B:94:01") != null);
@@ -671,7 +671,7 @@ test "decode huami legacy mac echo" {
 
     // Real capture (wild20): sender C1:08:12:09:27:11.
     aw.clearRetainingCapacity();
-    const p2 = [_]u8{0x02} ++ ([_]u8{0xFF} ** 16) ++ [_]u8{ 0x02, 0xC1, 0x08, 0x12, 0x09, 0x27, 0x11 };
+    const p2 = [_]u8{0x02} ++ (@as([16]u8, @splat(0xFF))) ++ [_]u8{ 0x02, 0xC1, 0x08, 0x12, 0x09, 0x27, 0x11 };
     try testing.expect(decodeHuamiLegacy(&p2, &aw.writer));
     try aw.writer.flush();
     try testing.expect(std.mem.indexOf(u8, aw.written(), "C1:08:12:09:27:11") != null);
@@ -749,7 +749,11 @@ test "decode apple stacked continuity TLVs" {
     defer aw.deinit();
     const payload = [_]u8{
         0x12, 0x02, 0x6e, 0x01,
-        0x07, 0x11, 0x06, 0x28, 0x13, 0xc0, 0x49, 0xf4, 0x2c, 0x35, 0x4b, 0x72, 0xd2, 0xd1, 0x75, 0xf4, 0x01, 0x08, 0xea,
+        0x07, 0x11, 0x06, 0x28,
+        0x13, 0xc0, 0x49, 0xf4,
+        0x2c, 0x35, 0x4b, 0x72,
+        0xd2, 0xd1, 0x75, 0xf4,
+        0x01, 0x08, 0xea,
     };
     try testing.expect(decodeApple(&payload, &aw.writer));
     try aw.writer.flush();
@@ -801,7 +805,7 @@ test "decode xiaomi frame" {
 test "decode exposure notification" {
     var aw: std.Io.Writer.Allocating = .init(testing.allocator);
     defer aw.deinit();
-    const data = [_]u8{0xAB} ** 16 ++ [_]u8{ 0x00, 0x11 };
+    const data = @as([16]u8, @splat(0xAB)) ++ [_]u8{ 0x00, 0x11 };
     try testing.expect(decodeExposure(&data, &aw.writer));
     try aw.writer.flush();
     try testing.expect(std.mem.indexOf(u8, aw.written(), "rolling proximity id") != null);
@@ -811,7 +815,7 @@ test "decode apple skips ibeacon frames" {
     var aw: std.Io.Writer.Allocating = .init(testing.allocator);
     defer aw.deinit();
     // Real iBeacon from a live capture: must NOT decode as Continuity.
-    const payload = [_]u8{0x02} ++ [_]u8{0x15} ++ ([_]u8{0x74} ** 16) ++ [_]u8{ 0x01, 0x00, 0xE4, 0x16, 0xC5 };
+    const payload = [_]u8{0x02} ++ [_]u8{0x15} ++ (@as([16]u8, @splat(0x74))) ++ [_]u8{ 0x01, 0x00, 0xE4, 0x16, 0xC5 };
     try testing.expect(!decodeApple(&payload, &aw.writer));
     try aw.writer.flush();
     try testing.expectEqual(@as(usize, 0), aw.written().len);
@@ -820,7 +824,7 @@ test "decode apple skips ibeacon frames" {
 test "decode find my device network beacon" {
     var aw: std.Io.Writer.Allocating = .init(testing.allocator);
     defer aw.deinit();
-    const data = [_]u8{0x4A} ** 16;
+    const data: [16]u8 = @splat(0x4A);
     try testing.expect(decodeFindMyDevice(&data, &aw.writer));
     try aw.writer.flush();
     const out = aw.written();

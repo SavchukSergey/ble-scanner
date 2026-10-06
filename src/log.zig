@@ -9,7 +9,7 @@ pub fn writeEvent(w: *std.Io.Writer, ev: *const model.AdvEvent) !void {
     var mac: [17]u8 = undefined;
     try w.print("{{\"mac\":\"{s}\",\"atype\":{d},\"etype\":\"{s}\",\"rssi\":{d},\"name\":", .{
         model.formatMac(ev.addr, &mac),
-        @intFromEnum(ev.addr_type),
+        @backingInt(ev.addr_type),
         advTypeWinName(ev.adv_type),
         ev.rssi,
     });

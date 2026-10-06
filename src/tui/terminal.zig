@@ -190,8 +190,8 @@ pub const Terminal = struct {
         t.cflag.PARENB = false;
         t.cflag.CSIZE = .CS8;
 
-        t.cc[@intFromEnum(std.os.linux.V.MIN)] = 1;
-        t.cc[@intFromEnum(std.os.linux.V.TIME)] = 0;
+        t.cc[@backingInt(std.os.linux.V.MIN)] = 1;
+        t.cc[@backingInt(std.os.linux.V.TIME)] = 0;
 
         std.posix.tcsetattr(self.in.handle, .FLUSH, t) catch return error.RawModeFailed;
     }

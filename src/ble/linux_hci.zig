@@ -102,9 +102,9 @@ pub const LinuxHci = struct {
     pub fn hint(e: SpawnError) []const u8 {
         return switch (e) {
             error.PermissionDenied =>
-                \\opening the raw HCI socket requires privileges.
-                \\Either run with sudo or grant the binary the capabilities once:
-                \\  sudo setcap cap_net_raw,cap_net_admin+ep <path-to>/ble-scanner
+            \\opening the raw HCI socket requires privileges.
+            \\Either run with sudo or grant the binary the capabilities once:
+            \\  sudo setcap cap_net_raw,cap_net_admin+ep <path-to>/ble-scanner
             ,
             error.NoSuchDevice => "no such Bluetooth adapter (try --adapter hciN)",
             else => "could not open the raw HCI socket",
@@ -159,7 +159,8 @@ pub const LinuxHci = struct {
         if (!self.stopped.load(.acquire)) {
             const disable = [_]u8{
                 opc_le_set_scan_enable & 0xFF, opc_le_set_scan_enable >> 8,
-                0x02, 0x00, 0x00,
+                0x02,                          0x00,
+                0x00,
             };
             self.writeCmd(&disable);
         }
@@ -320,7 +321,8 @@ pub const LinuxHci = struct {
         self.stopped.store(true, .release);
         const disable = [_]u8{
             opc_le_set_scan_enable & 0xFF, opc_le_set_scan_enable >> 8,
-            0x02, 0x00, 0x00,
+            0x02,                          0x00,
+            0x00,
         };
         self.writeCmd(&disable);
         // Close wakes the blocked readStreaming on most kernels; on

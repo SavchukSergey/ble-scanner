@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Migrated to Zig 0.17.0 (now the minimum toolchain): build script uses
+  `addPassthruArgs` and the renamed optimize modes; array-multiplication
+  test fixtures (`a ** n`) ported to `@splat`; enum reflection updated for
+  the struct-of-arrays `@typeInfo` layout. No behavior change.
+- Source tree re-normalized with the 0.17 formatter, which also rewrites
+  the deprecated `@intFromEnum`/`@enumFromInt` builtins to
+  `@backingInt`/`@fromBackingInt`.
+
 ## [0.4.0] - 2026-09-09
 
 ### Added

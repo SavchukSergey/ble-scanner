@@ -118,7 +118,7 @@ pub fn formatMac(addr: [6]u8, buf: []u8) []const u8 {
 
 /// Stable map key for (addr, addr_type).
 pub fn addrKey(addr: [6]u8, t: AddrType) u64 {
-    var k: u64 = @intFromEnum(t);
+    var k: u64 = @backingInt(t);
     for (addr) |b| k = (k << 8) | b;
     return k;
 }
