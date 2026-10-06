@@ -105,8 +105,8 @@ pub const Rule = struct {
 /// Ordered rule table; first match wins.
 pub const rules = [_]Rule{
     // Apple Continuity: 0x004C type 0x02 + 0x15/0x16 = iBeacon, rest = Continuity.
-    .{ .company = 0x004C, .prefix = &.{0x02, 0x15}, .kind = .ibeacon },
-    .{ .company = 0x004C, .prefix = &.{0x02, 0x16}, .kind = .ibeacon },
+    .{ .company = 0x004C, .prefix = &.{ 0x02, 0x15 }, .kind = .ibeacon },
+    .{ .company = 0x004C, .prefix = &.{ 0x02, 0x16 }, .kind = .ibeacon },
     .{ .company = 0x004C, .prefix = &.{0x07}, .kind = .continuity, .detail = "AirPods nearby" },
     // Nearby Info (0x12): Find My network participation beacons.
     .{ .company = 0x004C, .prefix = &.{0x12}, .kind = .continuity, .detail = "Find My nearby" },
@@ -149,6 +149,10 @@ pub const rules = [_]Rule{
 
     // Samsung SmartThings Find network beacon.
     .{ .svc = 0xFD69, .kind = .tracker, .detail = "SmartThings Find" },
+
+    // Tile finder beacons (service data 0xFEED; the SIG-assigned Tile
+    // service UUID usually rides along in the 0x02/0x03 list too).
+    .{ .svc = 0xFEED, .kind = .tracker, .detail = "Tile tracker" },
 
     // Zebra BLE barcode scanners.
     .{ .svc = 0xFE79, .kind = .hid, .detail = "barcode scanner" },

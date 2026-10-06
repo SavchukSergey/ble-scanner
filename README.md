@@ -8,7 +8,7 @@ advertisement bytes into meaningful information: it knows all 4000+
 Bluetooth SIG company identifiers, GATT appearances and service UUIDs, and
 decodes vendor formats such as Apple Continuity (AirPods, Find My), iBeacon,
 Eddystone, Google Fast Pair / Quick Share / Find My Device, Microsoft Swift
-Pair, Xiaomi Mi Beacon and Samsung SmartThings Find.
+Pair, Xiaomi Mi Beacon, Samsung SmartThings Find and Tile finders.
 
 ```
  ble-scanner · win-rt · sort: rssi                                           13 devices · 18:32:07
@@ -42,7 +42,7 @@ Eddystone URL, Xiaomi product, Swift Pair device name) and the raw hex.
 - Record (`--log`) and replay (`--replay`) captures as plain JSONL
 - Headless capture mode and terminal-free `--selftest` render check
 - `--ascii` fallback for terminals with hostile fonts
-- Zero dependencies; 109 unit tests
+- Zero dependencies; 111 unit tests
 
 ## Requirements
 

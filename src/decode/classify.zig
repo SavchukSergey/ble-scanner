@@ -337,6 +337,21 @@ test "classify samsung tv beacon with no advertised name" {
     try testing.expectEqualStrings("Samsung TV", m.detail.?);
 }
 
+test "classify tile tracker by service data uuid" {
+    // Live capture (this project's own 45 s field run, device heard at
+    // -97 dBm with no name and no scan response): 0xFEED service data
+    // (Tile) plus the same UUID in the incomplete-16-bit list. Section
+    // data keeps the uuid bytes inline, little-endian.
+    const secs = [_]model.AdSection{
+        .{ .typ = 0x01, .data = &.{0x06} },
+        .{ .typ = 0x16, .data = &.{ 0xED, 0xFE, 0x02, 0x00, 0x91, 0xEF, 0x7B, 0xBF, 0x01, 0x45, 0x91, 0xA8 } },
+        .{ .typ = 0x03, .data = &.{ 0xED, 0xFE } },
+    };
+    const m = classify(&secs, "");
+    try testing.expectEqual(Kind.tracker, m.kind);
+    try testing.expectEqualStrings("Tile tracker", m.detail.?);
+}
+
 test "classify unnamed YUNMAI-family scale by service signature" {
     // Real capture (wild17): no name captured (device heard 3x at -107
     // dBm, no scan response), manufacturer data is the device's own

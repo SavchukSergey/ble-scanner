@@ -573,6 +573,24 @@ fn macStr2(addr: [6]u8, buf: []u8) []const u8 {
     }) catch "?";
 }
 
+// --- Tile finding network (service data 0xFEED) -----------------------------
+// v2 frame: version + status + 8-byte device id; v3 appends 3 extra bytes.
+// Captured live (this project's own field capture): 02 00 91ef7bbf014591a8.
+
+pub fn decodeTile(data: []const u8, w: *std.Io.Writer) bool {
+    if (data.len < 10) return false;
+    var hex: [40]u8 = undefined;
+    w.writeAll("network          Tile finding network\n") catch return true;
+    w.print("protocol         {d}\n", .{data[0]}) catch {};
+    w.print("status           0x{X:0>2}\n", .{data[1]}) catch {};
+    w.print("device id        {s}\n", .{hexOf(data[2..10], &hex)}) catch {};
+    if (data.len > 10) {
+        var hex2: [16]u8 = undefined;
+        w.print("extra            {s}\n", .{hexOf(data[10..], &hex2)}) catch {};
+    }
+    return true;
+}
+
 // --- dispatch -------------------------------------------------------------------
 
 /// Manufacturer data decoder: `payload` has the company id stripped.
@@ -601,6 +619,7 @@ pub fn decodeSvcData(uuid: u16, data: []const u8, w: *std.Io.Writer) bool {
         0xFEF3 => decodeFindMyDevice(data, w),
         0xFCF1 => decodeQuickShare(data, w),
         0xFD69 => decodeSmartThings(data, w),
+        0xFEED => decodeTile(data, w),
         else => false,
     };
 }
@@ -819,6 +838,33 @@ test "decode apple skips ibeacon frames" {
     try testing.expect(!decodeApple(&payload, &aw.writer));
     try aw.writer.flush();
     try testing.expectEqual(@as(usize, 0), aw.written().len);
+}
+
+test "decode tile finder beacon" {
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
+    // Live capture (this project's own 45 s field run): service data for
+    // UUID 0xFEED after the uuid is stripped.
+    const data = [_]u8{ 0x02, 0x00, 0x91, 0xEF, 0x7B, 0xBF, 0x01, 0x45, 0x91, 0xA8 };
+    try testing.expect(decodeTile(&data, &aw.writer));
+    try aw.writer.flush();
+    const out = aw.written();
+    try testing.expect(std.mem.indexOf(u8, out, "Tile finding network") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "protocol         2") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "device id        91ef7bbf014591a8") != null);
+    try testing.expect(std.mem.indexOf(u8, out, "extra") == null);
+
+    // v3-style frame: 3 trailing bytes must surface as "extra".
+    aw.clearRetainingCapacity();
+    const v3 = [_]u8{ 0x03, 0x06, 0xA1, 0xB2, 0xC3, 0xD4, 0xE5, 0xF6, 0x07, 0x18, 0xCA, 0xFE, 0x00 };
+    try testing.expect(decodeTile(&v3, &aw.writer));
+    try aw.writer.flush();
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "protocol         3") != null);
+    try testing.expect(std.mem.indexOf(u8, aw.written(), "extra            cafe00") != null);
+
+    // Too short to even carry a full device id: not recognized.
+    aw.clearRetainingCapacity();
+    try testing.expect(!decodeTile(data[0..9], &aw.writer));
 }
 
 test "decode find my device network beacon" {

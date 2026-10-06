@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Tile finder beacons are now decoded: the 0xFEED service-data frame
+  (protocol version, status, 8-byte device id) renders in the detail
+  view, and unnamed Tiles classify as "Tile tracker" instead of
+  "unknown" (seen live at -97 dBm with no name and no scan response).
+
 ### Changed
 - Migrated to Zig 0.17.0 (now the minimum toolchain): build script uses
   `addPassthruArgs` and the renamed optimize modes; array-multiplication
